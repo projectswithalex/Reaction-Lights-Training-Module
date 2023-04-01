@@ -1,0 +1,18 @@
+ECU : ESP8266 - Wemos D1 Mini(picture1) / NodeMcu (picture2)
+
+Power : LiIon/ LiPo Battery (try and buy ones with at least UV protection since the TP4056(v1) doesn't offer it)
+
+Charge : V1- TP4056 Module with Boost Convertor to 5V (picture3)
+		 V2- TP4056 Module(picture4) and Step-up Convertor Module(picture5)
+		 
+LED :16bit WS2812b Ring (picture6)
+
+Sensor: VL6180X Module (picture7)
+
+Perfboard: 4x6 CM (picture8)
+
+Additional parts:
+
+VoltageDivider :2 100K Ohm Resistor
+12V Switch Button (picture9)
+
