@@ -35,7 +35,7 @@ Keep the hand over the ECU and it will start a new training set.
 /*replaceValueHere*/ #define COUNTERACTIVE 1  
 #if COUNTERACTIVE
 /*replaceValueHere*/ uint8_t counterExercise = 0;  //Counter !if not ECU1 set to 0!
-/*replaceValueHere*/ uint8_t stopExercise = 10;     //How many touches until stop !if not ECU1 set to 0!
+/*replaceValueHere*/ uint8_t stopExercise = 20;     //How many touches until stop !if not ECU1 set to 0!
 #endif
 
 /******************************** ACTIVATE COUNTER CODE ******************************/
@@ -48,7 +48,7 @@ Keep the hand over the ECU and it will start a new training set.
 #define MACADDRESSSIZE 6   //Mac address size
 #define NO_ECU 0           //No ecu with the define MY_ECU 0
 #define RGBCLEARDELAY 100  //delay to be used with RGB clear ?TBD
-/*replaceValueHere*/#define AVAILABLEECU 3      //Nr of ECUs to be used
+/*replaceValueHere*/#define AVAILABLEECU 4      //Nr of ECUs to be used
 #define MAXAVAILABLEECU 10  // I think ESPNOW supports up to 10 devices
 
 
@@ -59,6 +59,7 @@ Keep the hand over the ECU and it will start a new training set.
 /*replaceValueHere*/ uint8_t   receiverAddress1[] = {0xAC, 0x0B, 0xFB, 0xCF, 0xC1, 0x0F};       // ECU 1 
 /*replaceValueHere*/ //uint8_t receiverAddress2[] = {0xAC, 0x0B, 0xFB, 0xCF, 0xD8, 0xB1 };     //  this ECU MAC address ,only for example purposes
 /*replaceValueHere*/ uint8_t   receiverAddress3[] = {0xF4, 0xCF, 0xA2, 0x79, 0x23, 0x84 };     //  ECU 3
+/*replaceValueHere*/ uint8_t   receiverAddress4[] = {0x4C, 0xEB, 0xD6, 0x62, 0x09, 0x54 };     //  ECU 4
 
 
 uint8_t receiverECU_Address[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };  //Placeholder for the receiver address
@@ -89,6 +90,7 @@ transmissionState_en TransmisionStatus = DATARECEIVED_en;  //Transmision Status
    memcpy(&receiverArray[1], receiverAddress1, 6);  
   // memcpy(&receiverArray[2], receiverAddress2, 6); //This is my ECU position doesn't need to be filed.
   memcpy(&receiverArray[3], receiverAddress3, 6);
+  memcpy(&receiverArray[4], receiverAddress4, 6);
   //.......
   //and so on until MAXAVAILABLEECU
 
@@ -111,6 +113,7 @@ void initESPNOWcomm(void) {
 /*replaceValueHere*/  //add peers here or modify the reciverAddress to the right ECUS
   esp_now_add_peer(receiverAddress1, RECEIVER_ROLE, WIFI_CHANNEL, NULL, 0);
   esp_now_add_peer(receiverAddress3, RECEIVER_ROLE, WIFI_CHANNEL, NULL, 0);
+  esp_now_add_peer(receiverAddress4, RECEIVER_ROLE, WIFI_CHANNEL, NULL, 0);
 
   initReceiverAddress();
 }
