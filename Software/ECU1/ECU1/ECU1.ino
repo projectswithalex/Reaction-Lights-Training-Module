@@ -8,7 +8,8 @@
  
  
 
-Check to code and please add your values/settings where needed. I have commented every line with the following indicator "replaceValueHere" to make it easier for you.
+Check to code and please add your values/settings where needed.Feature "CounterActive" should be active for all the ECUs if enabled.
+ I have commented every line with the following indicator "replaceValueHere" to make it easier for you.
 
 Disclaimer : Code is opensource and can be modified by everyone. If you can improve the code and add new functionality to it i would be happy to get
               in touch with you and update the repository. 
@@ -27,9 +28,27 @@ Disclaimer : Code is opensource and can be modified by everyone. If you can impr
 #include <VL6180X_WE.h>
 
 /******************************** ACTIVATE COUNTER CODE ******************************/
+#define TWOCOLORS 1
+#if TWOCOLORS
+
+#define COLOR1 0
+#define COLOR2 2
+
+/*replaceValueHere*/ #define TIMEBETWEEN  1000 //1sec
+uint8_t twoColorsRGBflag = 0;
+
+#endif
+
+
+
+/******************************** ACTIVATE COUNTER CODE ******************************/
+
+
+/******************************** ACTIVATE COUNTER CODE ******************************/
 /*
 modify COUNTERACTIVE value to 1 to be able to use the COUNTER settings.After a defined number of touches the set is over and the ECU will flash.
 Keep the hand over the ECU and it will start a new training set.
+if Counter active value is 0 there will be no end signaling and it will go until you decide to stop.
 */
 
 /*replaceValueHere*/ #define COUNTERACTIVE 1
@@ -48,7 +67,7 @@ Keep the hand over the ECU and it will start a new training set.
 #define MACADDRESSSIZE 6                       //Mac address size
 #define NO_ECU 0                               //No ecu with the define MY_ECU 0
 #define RGBCLEARDELAY 100                      //delay to be used with RGB clear ?TBD
-  /*replaceValueHere*/ #define AVAILABLEECU 4  //Nr of ECUs to be used
+  /*replaceValueHere*/ #define AVAILABLEECU 3  //Nr of ECUs to be used
 #define MAXAVAILABLEECU 10                     // I think ESPNOW supports up to 10 devices
 
 
@@ -56,10 +75,10 @@ Keep the hand over the ECU and it will start a new training set.
 
   //Receivers ECUS addreses.Add all of them here.
 
-  /*replaceValueHere*/  //uint8_t receiverAddress1[] = {0xAC, 0x0B, 0xFB, 0xCF, 0xC1, 0x0F};    //  this ECU MAC address ,only for example purposes
-  /*replaceValueHere*/  uint8_t receiverAddress2[] = { 0xAC, 0x0B, 0xFB, 0xCF, 0xD8, 0xB1 };    //  ECU 2
-/*replaceValueHere*/    uint8_t receiverAddress3[] = { 0xF4, 0xCF, 0xA2, 0x79, 0x23, 0x84 };    //  ECU 3
-/*replaceValueHere*/ uint8_t   receiverAddress4[] = {0x4C, 0xEB, 0xD6, 0x62, 0x09, 0x54 };     //  ECU 4
+  /*replaceValueHere*/                                                                       //uint8_t receiverAddress1[] = {0xAC, 0x0B, 0xFB, 0xCF, 0xC1, 0x0F};    //  this ECU MAC address ,only for example purposes
+  /*replaceValueHere*/ uint8_t receiverAddress2[] = { 0xAC, 0x0B, 0xFB, 0xCF, 0xD8, 0xB1 };  //  ECU 2
+/*replaceValueHere*/ uint8_t receiverAddress3[] = { 0xF4, 0xCF, 0xA2, 0x79, 0x23, 0x84 };    //  ECU 3
+///*replaceValueHere*/ uint8_t receiverAddress4[] = { 0x4C, 0xEB, 0xD6, 0x62, 0x09, 0x54 };    //  ECU 4
 
 uint8_t receiverECU_Address[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };  //Placeholder for the receiver address
 
@@ -90,10 +109,9 @@ transmissionState_en TransmisionStatus = DATARECEIVED_en;         //Transmision 
   // memcpy(&receiverArray[0], receiverAddress1, 6);  //This is my ECU position doesn't need to be filed.
   memcpy(&receiverArray[2], receiverAddress2, 6);
   memcpy(&receiverArray[3], receiverAddress3, 6);
-  memcpy(&receiverArray[4], receiverAddress4, 6); 
+  //memcpy(&receiverArray[4], receiverAddress4, 6);
   //.......
   //and so on until MAXAVAILABLEECU
-
 }
 
 
@@ -113,7 +131,7 @@ void initESPNOWcomm(void) {
   /*replaceValueHere*/  //add peers here or modify the reciverAddress to the right ECUS
   esp_now_add_peer(receiverAddress2, RECEIVER_ROLE, WIFI_CHANNEL, NULL, 0);
   esp_now_add_peer(receiverAddress3, RECEIVER_ROLE, WIFI_CHANNEL, NULL, 0);
-  esp_now_add_peer(receiverAddress4, RECEIVER_ROLE, WIFI_CHANNEL, NULL, 0);
+  // esp_now_add_peer(receiverAddress4, RECEIVER_ROLE, WIFI_CHANNEL, NULL, 0);
 
   initReceiverAddress();
 }
@@ -294,9 +312,9 @@ void initTOFSensor(void) {
   while (TOFsensor.VL6180xInit() == VL6180x_FAILURE_RESET) {
     Serial.println("FAILED TO INITALIZE");  //Initialize device and check for errors
   }
-  TOFsensor.VL6180xDefautSettings();    //Load default settings to get started.
-  delay(500);                           //do i really need this here
-/*replaceValueHere*/  TOFsensor.VL6180xSetDistInt(20, 20);  //it detects a movement when it lower than 2cm. With the current initialization should work for values up until 20cm .
+  TOFsensor.VL6180xDefautSettings();                         //Load default settings to get started.
+  delay(500);                                                //do i really need this here
+  /*replaceValueHere*/ TOFsensor.VL6180xSetDistInt(20, 20);  //it detects a movement when it lower than 2cm. With the current initialization should work for values up until 20cm .
   TOFsensor.getDistanceContinously();
   TOFsensor.VL6180xClearInterrupt();
   interruptReceived = false;
@@ -307,9 +325,19 @@ void initTOFSensor(void) {
 //Callback function after a transmission has been sent
 void transmissionComplete(uint8_t *receiver_mac, uint8_t transmissionStatus) {
   if (transmissionStatus == 0) {
+#if TWOCOLORS
+    twoColorsRGBflag++;
+#else
     TransmisionStatus = TRANSMISIONSUCCESFULL_en;
+#endif
   } else {
+
+#if TWOCOLORS
     TransmisionStatus = SENDDATA_en;
+#else
+    TransmisionStatus = SENDDATA_en;
+#endif
+
     Serial.print("Error code: ");
     Serial.println(transmissionStatus);
   }
@@ -325,6 +353,10 @@ void dataReceived(uint8_t *senderMac, uint8_t *data, uint8_t dataLength) {
 
   memcpy(&packet, data, sizeof(packet));
 
+
+  Serial.print("LED_TOKEN: ");
+  Serial.println(data[0]);
+
   counterExercise = data[1];
   Serial.print("counterExercise: ");
   Serial.println(data[1]);
@@ -332,6 +364,7 @@ void dataReceived(uint8_t *senderMac, uint8_t *data, uint8_t dataLength) {
   Serial.print("stopExercise: ");
   Serial.println(data[2]);
 
+  twoColorsRGBflag=0;
   TransmisionStatus = DATARECEIVED_en;
 }
 /******************************** Logic CODE  ******************************/
@@ -451,8 +484,22 @@ void setup() {
   clearRGBcolors();
   Serial.println("Ready");
 }
+
 unsigned long timeFlag = 0;
+unsigned long countTime = 0;
+unsigned long colorCounter = 0;  //TEST
+unsigned long sendingCouter = 0;
 void loop() {
+#if TWOCOLORS
+  if (TransmisionStatus == DATARECEIVED_en || twoColorsRGBflag>=(AVAILABLEECU-1)) {
+    countTime = millis();
+    while (millis() - countTime < TIMEBETWEEN) {
+      clearRGBcolors();
+    }
+    twoColorsRGBflag=0;
+    TransmisionStatus = ONLYRECEIVE_en;
+  }
+#endif
 #if COUNTERACTIVE
   if (counterExercise < stopExercise) {
 #endif
@@ -462,7 +509,12 @@ void loop() {
     }
 
     if (packet.LED_Token == MY_ECU) {
-      setRGBcolors(selectColor);
+#if TWOCOLORS
+      setRGBcolors(COLOR1);
+#else
+    setRGBcolors(selectColor);
+#endif
+
       //Is the sensor active and the ECU is valid ?
       if (interruptReceived) {
         selectColorNextCycle();
@@ -480,18 +532,38 @@ void loop() {
         Serial.println(counterExercise);
 #endif
       } else {
-        // Serial.print("Intrerupt received : ");
-        // Serial.println(interruptReceived);
+        //do nothing but wait
       }
     } else {
+#if TWOCOLORS
+
+        setRGBcolors(COLOR2);
+
+#endif
       if (TransmisionStatus == SENDDATA_en) {
 
         char macStr[18];
         snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x", receiverECU_Address[0], receiverECU_Address[1], receiverECU_Address[2], receiverECU_Address[3], receiverECU_Address[4], receiverECU_Address[5]);
         Serial.print("sending to:");
         Serial.println(macStr);
-        esp_now_send(receiverECU_Address, (uint8_t *)&packet, sizeof(packet));
-        TransmisionStatus = SENDINGDATA_en;
+#if TWOCOLORS
+   //     sendingPeriod = millis();
+   //     sendingCouter = millis();
+   //     while (millis() - sendingPeriod < 300) {
+   //       if (millis() - sendingCouter > 50) {
+            esp_now_send(NULL, (uint8_t *)&packet, sizeof(packet));
+            
+    //        sendingCouter = millis();
+    //      }
+    //    }
+        
+#else
+       esp_now_send(receiverECU_Address, (uint8_t *)&packet, sizeof(packet));
+       
+      
+#endif
+      TransmisionStatus = SENDINGDATA_en;
+
       } else {
         if (TransmisionStatus == TRANSMISIONSUCCESFULL_en) {
 
@@ -503,7 +575,11 @@ void loop() {
           if (TransmisionStatus == ONLYRECEIVE_en) {
 
             interruptReceived = false;
-            clearRGBcolors();
+#if TWOCOLORS
+
+#else
+          clearRGBcolors();
+#endif
             TOFsensor.VL6180xClearInterrupt();
           }
         }
@@ -514,10 +590,8 @@ void loop() {
     if (flag < 5) {
       endOfTrainingLight();
     } else {
-      
       startOfNewTraining();
       Serial.print("Reset");
-      
     }
   }
 #endif
