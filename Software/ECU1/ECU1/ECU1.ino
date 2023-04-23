@@ -22,7 +22,7 @@ Disclaimer : Code is opensource and can be modified by everyone. If you can impr
 #include <espnow.h>
 #include <Wire.h>
 #include <VL6180X_WE.h>
-
+#include <VL6180X.h>
 
 
 /******************************** TRAINING MODE SELECTION ******************************/
@@ -89,6 +89,15 @@ enum TRAINING_COUNTERMODE_en {
 };
 TRAINING_COUNTERMODE_en TRAINING_COUNTERMODE_selection;
 void trainingCounterModeMain(void);
+void setupTrainingCounterMode(void);
+VL6180X sensor;
+uint8_t TRAINING_COUNTERMODE_pushUpCounter = 0;
+bool TRAINING_COUNTERMODE_flagUp=false;
+bool TRAINING_COUNTERMODE_flagDown=false;
+uint8_t TRAINING_COUNTERMODE_restartCounterTraining=0;
+
+
+
 
 bool training_tipeOfTrainingFlag = false;
 tipeOfTraining_en training_trainingType;
@@ -110,6 +119,9 @@ uint8_t training_partnerMode_P2Color = 0;
 
 bool traininig_partnerMode_stopTimeIntervalFlag = false;
 uint8_t traininig_partnerMode_stopTimeInterval = 0;
+
+bool training_counterMode_setRepsFlag=false;
+uint8_t training_counterMode_setReps=0;
 
 unsigned long debounceDelay = 200;
 volatile unsigned long lastDebounce = 0;
@@ -141,6 +153,7 @@ bool TRAINING_nrOfColorsFunction(void);
 bool TRAINING_stopTimeDurationFunction(void);
 bool TRAINING_selectColor_P1(void);
 bool TRAINING_selectColor_P2(void);
+bool TRAINING_CounterModeSetReps(void);
 
 uint16_t TRAINING_stopTimeDurationFunctionHelper(void) {
   return interruptModeSelection * 500;
@@ -193,7 +206,7 @@ struct __attribute__((packed)) dataPacketPartner {
 
 struct __attribute__((packed)) dataPacketSettings {
   uint8_t training_trainingType;
-  uint8_t training_nrOfColors;  
+  uint8_t training_nrOfColors;
   uint8_t training_counterValStop;
   uint16_t training_stopTimeDuration;
   uint8_t training_partnerMode_P1Color;
@@ -211,7 +224,7 @@ enum transmissionState_en {
 };
 
 /*replaceValueHere*/ dataPacketAlone packetAlone = { 1, 0 };  //Package of data to be sent !if not ECU1 set to 0!
-transmissionState_en TransmisionStatus = DATARECEIVED_en;                    //Transmision Status
+transmissionState_en TransmisionStatus = DATARECEIVED_en;     //Transmision Status
 
 dataPacketPartner packetPartner;
 dataPacketSettings packetSettings;
@@ -581,6 +594,52 @@ void startOfNewTraining(void) {
   }
 }
 
+void endOfTrainingCounter(void)
+{
+  uint16_t distanceVal=0;
+    for (int i = 0; i < RGBLEDNUM; i++) {
+      pixels.setPixelColor(i, pixels.Color(0, 0, 150));
+      pixels.show();
+    }
+    delay(100);
+    pixels.clear();
+    pixels.show();
+    for (int i = 0; i < RGBLEDNUM; i++) {
+      pixels.setPixelColor(i, pixels.Color(150, 0, 0));
+      pixels.show();
+    }
+    delay(100);
+    pixels.clear();
+    pixels.show();
+    for (int i = 0; i < RGBLEDNUM; i++) {
+      pixels.setPixelColor(i, pixels.Color(100, 100, 100));
+      pixels.show();
+    }
+    delay(100);
+    pixels.clear();
+    pixels.show();
+    distanceVal = sensor.readRangeSingleMillimeters();
+    if (distanceVal < 100) {
+      TRAINING_COUNTERMODE_restartCounterTraining++;
+    }
+    if (TRAINING_COUNTERMODE_restartCounterTraining > 10) {
+      TRAINING_COUNTERMODE_restartCounterTraining = 0;
+      TRAINING_COUNTERMODE_pushUpCounter = 0;
+      pixels.clear();
+      pixels.show();
+      delay(100);
+      for (int i = 0; i < RGBLEDNUM; i++) {
+        pixels.setPixelColor(i, pixels.Color(0, 100, 0));
+        pixels.show();
+        delay(50);
+      }
+      delay(1000);
+      pixels.clear();
+      pixels.show();
+    }
+}
+
+
 void startOptionSelection(void) {
   tipeOfTraining_en lModeSelect;
   uint8_t setCounter = 0;
@@ -718,7 +777,10 @@ void startOptionSelection(void) {
         break;  //TRAINING_PARTNERMODERACE
 
       case TRAINING_COUNTERMODE:
-
+        if (TRAINING_CounterModeSetReps()) {
+          training_startTraining_Flag = true;
+          setupTrainingCounterMode();
+        }
         break;  //TRAINING_COUNTERMODE
     }
   }
@@ -780,6 +842,10 @@ void loop() {
 
       case TRAINING_PARTNERMODERACE:
         trainingPartnerModeRaceMain();
+        break;
+
+      case TRAINING_COUNTERMODE:
+        trainingCounterModeMain();
         break;
     }
   }
@@ -986,6 +1052,51 @@ void trainingPartnerModeRaceMain(void) {
   //add control Code
 }
 
+void trainingCounterModeMain(void) {
+
+  uint16_t distanceVal;
+  if (TRAINING_COUNTERMODE_pushUpCounter < training_counterMode_setReps) {
+    distanceVal = sensor.readRangeSingleMillimeters();
+
+    if (sensor.timeoutOccurred()) { Serial.print(" TIMEOUT"); }
+
+    delay(100);
+
+    if ((distanceVal < 500) && (TRAINING_COUNTERMODE_flagDown == false)) {
+      Serial.println(distanceVal);
+      Serial.println("DOWN");
+
+      TRAINING_COUNTERMODE_flagDown = true;
+    }
+
+    if ((TRAINING_COUNTERMODE_flagDown == true) && (TRAINING_COUNTERMODE_flagUp == false)) {
+      Serial.println("Light one up");
+      TRAINING_COUNTERMODE_pushUpCounter++;
+      Serial.print("pushUpCounter:");
+      Serial.println(TRAINING_COUNTERMODE_pushUpCounter);
+      Serial.print("training_counterMode_setReps:");
+      Serial.println(training_counterMode_setReps);
+
+      TRAINING_COUNTERMODE_flagUp = true;
+      for (int i = 0; i < TRAINING_COUNTERMODE_pushUpCounter; i++) {
+        pixels.setPixelColor(i, pixels.Color(150, 150, 150));
+        pixels.show();
+      }
+    }
+
+    if (distanceVal > 500 && (TRAINING_COUNTERMODE_flagUp == true)) {
+      Serial.println(distanceVal);
+      Serial.println("UP");
+      TRAINING_COUNTERMODE_flagUp = 0;
+      TRAINING_COUNTERMODE_flagDown = 0;
+    }
+  } else {
+    endOfTrainingCounter();
+    }
+  }
+
+
+
 bool TRAINING_counterSetSelectionFunction(void) {
   bool lreturn = false;
   uint8_t setCounter;
@@ -1115,6 +1226,42 @@ bool TRAINING_selectColor_P2(void) {
       TOFsensor.VL6180xClearInterrupt();
       Serial.print("training_nrOfColors:");
       Serial.println(training_nrOfColors);
+      clearRGBcolors();
+      lreturn = true;
+    }
+  }
+  return lreturn;
+}
+
+void setupTrainingCounterMode(void) {
+  sensor.init();
+  sensor.configureDefault();
+  sensor.setScaling(2);
+  sensor.setTimeout(500);
+}
+
+bool TRAINING_CounterModeSetReps (void){
+  bool lreturn = false;
+  uint8_t setReps;
+  if (training_counterMode_setRepsFlag == false) {
+    buttonPushValid();
+    setReps = interruptModeSelection;
+    if (setReps != 0) {
+      intrerruptTOF = false;
+      TOFsensor.VL6180xClearInterrupt();
+    }
+    if (setReps > RGBLEDNUM ) {
+      interruptModeSelection = 1;
+    }
+    setRGBColorsNumber(interruptModeSelection);
+    if (intrerruptTOF == true && setReps != 0) {
+      training_counterMode_setReps = setReps;
+      training_counterMode_setRepsFlag = true;
+      interruptModeSelection = 0;
+      intrerruptTOF = false;
+      TOFsensor.VL6180xClearInterrupt();
+      Serial.print("training_counterMode_setReps:");
+      Serial.println(training_counterMode_setReps);
       clearRGBcolors();
       lreturn = true;
     }
