@@ -50,16 +50,16 @@ void TRAINING_PARTNERMODE_player2Loop(void);
 void TRAINING_PARTNERMODE_TokenTaken(void);
 void trainingPartnerModeRaceMain(void);
 
-bool settingsReceivedFlag = false;
+bool settingsReceivedFlag=false;
 uint8_t counterExercise = 0;
-uint8_t playerToken = 0;
+uint8_t playerToken=0;
 bool tokenTaken = 0;
 /******************************** TRAINING MODE SELECTION ******************************/
 
 /********************************ESP NOW COMMUNICATION CODE ******************************/
 #define MY_ROLE ESP_NOW_ROLE_COMBO        // set the role of this device: CONTROLLER, SLAVE, COMBO
 #define RECEIVER_ROLE ESP_NOW_ROLE_COMBO  // set the role of the receiver
-/*replaceValueHere*/ #define MY_ECU 2     //ECU number
+/*replaceValueHere*/ #define MY_ECU 4     //ECU number
 #define WIFI_CHANNEL 1
 #define MACADDRESSSIZE 6                       //Mac address size
 #define NO_ECU 0                               //No ecu with the define MY_ECU 0
@@ -69,11 +69,11 @@ bool tokenTaken = 0;
 
   //Receivers ECUS addreses.Add all of them here.
 
-  /*replaceValueHere*/ uint8_t receiverAddress1[] = { 0xF4, 0xCF, 0xA2, 0x5D, 0x75, 0x28 };  //  this ECU MAC address ,only for example purposes
-                                                                                             // /*replaceValueHere*/ uint8_t receiverAddress2[] = { 0xAC, 0x0B, 0xFB, 0xCF, 0xC1, 0x0F };  //  ECU 2
+   /*replaceValueHere*/ uint8_t receiverAddress1[] = { 0xF4, 0xCF, 0xA2, 0x5D, 0x75, 0x28 };    //  this ECU MAC address ,only for example purposes
+  /*replaceValueHere*/ uint8_t receiverAddress2[] = { 0xAC, 0x0B, 0xFB, 0xCF, 0xC1, 0x0F };  //  ECU 2
 /*replaceValueHere*/ uint8_t receiverAddress3[] = { 0xAC, 0x0B, 0xFB, 0xCF, 0xD8, 0xB1 };    //  ECU 3
-/*replaceValueHere*/ uint8_t receiverAddress4[] = { 0xF4, 0xCF, 0xA2, 0x79, 0x23, 0x84 };    //  ECU 4
-// /*replaceValueHere*/ uint8_t receiverAddress5[] = { 0x4C, 0xEB, 0xD6, 0x62, 0x09, 0x54 };    //  ECU 5
+///*replaceValueHere*/ uint8_t receiverAddress4[] = { 0xF4, 0xCF, 0xA2, 0x79, 0x23, 0x84 };    //  ECU 4
+// /*replaceValueHere*/ uint8_t receiverAddress4[] = { 0x4C, 0xEB, 0xD6, 0x62, 0x09, 0x54 };    //  ECU 5
 
 uint8_t receiverECU_Address[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };  //Placeholder for the receiver address
 
@@ -85,13 +85,13 @@ struct __attribute__((packed)) dataPacketAlone {
 };
 
 struct __attribute__((packed)) dataPacketPartner {
-  uint8_t LED_Token_Partner = 2;
-  uint8_t counterExercisePartner = 0;
+  uint8_t LED_Token_Partner;
+  uint8_t counterExercisePartner;
 };
 
 struct __attribute__((packed)) dataPacketSettings {
   uint8_t training_NrOfEcus;
-  uint8_t training_trainingType;
+  uint8_t training_trainingType ;
   uint8_t training_nrOfColors;
   uint8_t training_counterValStop;
   uint16_t training_stopTimeDuration;
@@ -110,38 +110,38 @@ enum transmissionState_en {
 };
 
 /*replaceValueHere*/ dataPacketAlone packetAlone = { 1, 0 };  //Package of data to be sent !if not ECU1 set to 0!
-dataPacketPartner packetPartner;
-dataPacketSettings packetSettings = { 0 };
-dataPacketPartner partnerLocal = { 2, 0 };
-transmissionState_en TransmisionStatus = DATARECEIVED_en;  //Transmision Status
+dataPacketPartner packetPartner ;
+dataPacketSettings packetSettings;
+dataPacketPartner partnerLocal; 
+transmissionState_en TransmisionStatus = DATARECEIVED_en;     //Transmision Status
 
 
 
 void initReceiverAddress(void) {
-
+  
   switch (packetSettings.training_NrOfEcus) {
 
-    case 2:
-
-      memcpy(&receiverArray[3], receiverAddress3, 6);
-      esp_now_add_peer(receiverAddress3, RECEIVER_ROLE, WIFI_CHANNEL, NULL, 0);
-      break;
-
+  //  case 2:
+  //   
+  //    memcpy(&receiverArray[2], receiverAddress2, 6);
+  //    esp_now_add_peer(receiverAddress2, RECEIVER_ROLE, WIFI_CHANNEL, NULL, 0);
+  //    break;
+//
     case 3:
-
+     
+      memcpy(&receiverArray[2], receiverAddress2, 6);
       memcpy(&receiverArray[3], receiverAddress3, 6);
-      memcpy(&receiverArray[4], receiverAddress4, 6);
+      esp_now_add_peer(receiverAddress2, RECEIVER_ROLE, WIFI_CHANNEL, NULL, 0);
       esp_now_add_peer(receiverAddress3, RECEIVER_ROLE, WIFI_CHANNEL, NULL, 0);
-      esp_now_add_peer(receiverAddress4, RECEIVER_ROLE, WIFI_CHANNEL, NULL, 0);
       break;
 
     case 4:
-
+     
+      memcpy(&receiverArray[2], receiverAddress2, 6);
       memcpy(&receiverArray[3], receiverAddress3, 6);
-      memcpy(&receiverArray[4], receiverAddress4, 6);
       //to add 5
+       esp_now_add_peer(receiverAddress2, RECEIVER_ROLE, WIFI_CHANNEL, NULL, 0);
       esp_now_add_peer(receiverAddress3, RECEIVER_ROLE, WIFI_CHANNEL, NULL, 0);
-      esp_now_add_peer(receiverAddress4, RECEIVER_ROLE, WIFI_CHANNEL, NULL, 0);
       //to add 5
       break;
   }
@@ -165,9 +165,10 @@ void initESPNOWcomm(void) {
   esp_now_register_send_cb(transmissionComplete);  // this function will get called once all data is sent
   esp_now_register_recv_cb(dataReceived);          // this function will get called whenever we receive data
 
-  /*replaceValueHere*/                                                       //add peers here or modify the reciverAddress to the right ECUS
-  esp_now_add_peer(receiverAddress1, RECEIVER_ROLE, WIFI_CHANNEL, NULL, 0);  // this is the master and we need to add it before everyone else because the commands come from it.
+  /*replaceValueHere*/  //add peers here or modify the reciverAddress to the right ECUS
+  esp_now_add_peer(receiverAddress1, RECEIVER_ROLE, WIFI_CHANNEL, NULL, 0); // this is the master and we need to add it before everyone else because the commands come from it.
   memcpy(&receiverArray[1], receiverAddress1, 6);
+  
 }
 /********************************ESP NOW COMMUNICATION CODE ******************************/
 
@@ -198,19 +199,19 @@ void selectColorNextCycle(void) {
 
 uint8_t generateRandomColor(void) {
   randomSeed(millis());
-  uint8_t flag = 0;
+  uint8_t flag=0;
   uint8_t returnValue = 0;
   uint8_t randomColor = 0;
   while (flag == 0) {
-    randomColor = random(packetSettings.training_nrOfColors);
+    randomColor = random( packetSettings.training_nrOfColors);
 
     if (packetSettings.training_trainingType == TRAINING_ALLONALLOFF) {
       if (randomColor != trainingAllOnAllOfActiveColorIndex) {  //BLUE is the active LIGHT for ALLONALLOFF
         returnValue = randomColor;
-        flag = 1;
+        flag=1;
       }
     } else {
-      flag = 1;
+      flag=1;
       returnValue = randomColor;
     }
   }
@@ -373,16 +374,18 @@ void initTOFSensor(void) {
 //Callback function after a transmission has been sent
 void transmissionComplete(uint8_t *receiver_mac, uint8_t transmissionStatus) {
   if (transmissionStatus == 0) {
-    if (packetSettings.training_trainingType == TRAINING_ALLONALLOFF) {
+    if(packetSettings.training_trainingType==TRAINING_ALLONALLOFF)
+    {
       TRAINING_ALLONALLOFF_sendData++;
-    } else {
+    }else
+    {
       TransmisionStatus = TRANSMISIONSUCCESFULL_en;
     }
-
+    
   } else {
     TransmisionStatus = SENDDATA_en;
-    // Serial.print("Error code: ");
-    // Serial.println(transmissionStatus);
+    Serial.print("Error code: ");
+    Serial.println(transmissionStatus);
   }
 }
 //Callback function after a transmission has been received
@@ -411,7 +414,7 @@ void dataReceived(uint8_t *senderMac, uint8_t *data, uint8_t dataLength) {
       break;
     case 8:
       memcpy(&packetSettings, data, sizeof(packetSettings));
-      settingsReceivedFlag = false;
+      settingsReceivedFlag=false;
       break;
   }
   TransmisionStatus = DATARECEIVED_en;
@@ -426,14 +429,13 @@ uint8_t randomECUselect(void) {
   uint8_t returnValue = 0;
   uint8_t randomNumber = 0;
   while (returnValue == 0) {
-    randomNumber = random(0, packetSettings.training_NrOfEcus + 2);  //we have +2 because 1 is master and the function is exclusive
+    randomNumber = random(0, packetSettings.training_NrOfEcus + 2); //we have +2 because 1 is master and the function is exclusive
 
     if ((randomNumber != MY_ECU) && (randomNumber != NO_ECU)) {
       returnValue = randomNumber;
     }
   }
-  Serial.print("randomNumber");
-  Serial.println(randomNumber);
+
   return returnValue;
 }
 
@@ -532,7 +534,7 @@ void setup() {
   initBatteryCheck();
   Serial.println("almost Ready");
   delay(1000);
-  // clearRGBcolors();
+// clearRGBcolors();
 
   Serial.println("Ready");
 }
@@ -542,10 +544,12 @@ unsigned long countTime = 0;
 void loop() {
 
   if (packetSettings.training_trainingType != 0 && settingsReceivedFlag == false) {
-    Serial.println("Start Training");
-    initReceiverAddress();
-    clearRGBcolors();
-    settingsReceivedFlag = true;
+
+      Serial.println("Start Training");
+      initReceiverAddress();
+      clearRGBcolors();
+      settingsReceivedFlag = true;
+    
   }
 
   switch (packetSettings.training_trainingType) {
@@ -568,6 +572,7 @@ void loop() {
     case TRAINING_PARTNERMODERACE:
       trainingPartnerModeRaceMain();
       break;
+
   }
 }
 
@@ -593,9 +598,6 @@ void trainingSimpleMain(void) {
         counterExercise = packetAlone.counterExerciseData;
         counterExercise++;
         packetAlone.counterExerciseData = counterExercise;
-        Serial.print("counter:");
-        Serial.println(counterExercise);
-
       } else {
         //do nothing but wait
       }
@@ -604,8 +606,8 @@ void trainingSimpleMain(void) {
 
         char macStr[18];
         snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x", receiverECU_Address[0], receiverECU_Address[1], receiverECU_Address[2], receiverECU_Address[3], receiverECU_Address[4], receiverECU_Address[5]);
-        // Serial.print("sending to:");
-        // Serial.println(macStr);
+        Serial.print("sending to:");
+        Serial.println(macStr);
         esp_now_send(receiverECU_Address, (uint8_t *)&packetAlone, sizeof(packetAlone));
         TransmisionStatus = SENDINGDATA_en;
       } else {
@@ -650,7 +652,7 @@ void trainingAllOnAllOffMain(void) {
   if (counterExercise < packetSettings.training_counterValStop) {
     if (millis() - timeFlag > 500) {
       randomECUSelection = randomECUselect();
-
+      
       timeFlag = millis();
     }
 
@@ -671,7 +673,7 @@ void trainingAllOnAllOffMain(void) {
         //do nothing but wait
       }
     } else {
-
+      
       if (TransmisionStatus == SENDDATA_en) {
 
         char macStr[18];
@@ -712,7 +714,7 @@ void trainingReturnToMasterMain(void) {
 
   if (counterExercise < packetSettings.training_counterValStop) {
     if (millis() - timeFlag > 500) {
-      randomECUSelection = 1;  //that is the master
+      randomECUSelection = 1; //that is the master
       timeFlag = millis();
     }
 

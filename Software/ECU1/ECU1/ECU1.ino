@@ -39,8 +39,11 @@ enum tipeOfTraining_en {
   TRAINING_END = 6
 };
 bool training_startTraining_Flag = false;
+bool training_allSettingsSent = false;
+uint8_t training_allSettingsSentCounter = 0;
 
 enum TRAINING_SIMPLE_en {
+  TRAINING_SIMPLE_SelectNrOfECUs,
   TRAINING_SIMPLE_NrOfColorSelection,
   TRAINING_SIMPLE_counterSetSelection
 };
@@ -49,6 +52,7 @@ void trainingSimpleMain(void);
 
 
 enum TRAINING_ALLONALLOFF_en {
+  TRAINING_ALLONALLOFF_SelectNrOfECUs,
   TRAINING_ALLONALLOFF_NrOfColorSelection,
   TRAINING_ALLONALLOFF_counterSetSelection,
   TRAINING_ALLONALLOFF_stopTimeDuration,
@@ -56,9 +60,10 @@ enum TRAINING_ALLONALLOFF_en {
 TRAINING_ALLONALLOFF_en TRAINING_ALLONALLOFF_selection;
 void trainingAllOnAllOffMain(void);
 uint8_t TRAINING_ALLONALLOFF_sendData = 0;
-uint8_t trainingAllOnAllOfActiveColorIndex = 2;  //Blue
+uint8_t trainingAllOnAllOfActiveColorIndex = 0;  //red
 
 enum TRAINING_RETURNTOMASTER_en {
+  TRAINING_RETURNTOMASTER_SelectNrOfECUs,
   TRAINING_RETURNTOMASTER_NrOfColorSelection,
   TRAINING_RETURNTOMASTER_counterSetSelection,
   TRAINING_RETURNTOMASTER_stopTimeDuration,
@@ -67,14 +72,19 @@ TRAINING_RETURNTOMASTER_en TRAINING_RETURNTOMASTER_selection;
 void trainingReturnToMasterMain(void);
 
 enum TRAINING_PARTNERMODE_en {
+  TRAINING_PARTNERMODE_SelectNrOfECUs,
   TRAINING_PARTNERMODE_SelectColor_Player1,
   TRAINING_PARTNERMODE_SelectColor_Player2,
   TRAINING_PARTNERMODE_counterSetSelection,
 };
 TRAINING_PARTNERMODE_en TRAINING_PARTNERMODE_selection;
 void trainingPartnerModeMain(void);
+void TRAINING_PARTNERMODE_player1Loop(void);
+void TRAINING_PARTNERMODE_player2Loop(void);
+void TRAINING_PARTNERMODE_TokenTaken(void);
 
 enum TRAINING_PARTNERMODERACE_en {
+  TRAINING_PARTNERMODERACE_SelectNrOfECUs,
   TRAINING_PARTNERMODERACE_SelectColor_Player1,
   TRAINING_PARTNERMODERACE_SelectColor_Player2,
   TRAINING_PARTNERMODERACE_counterSetSelection,
@@ -92,9 +102,9 @@ void trainingCounterModeMain(void);
 void setupTrainingCounterMode(void);
 VL6180X sensor;
 uint8_t TRAINING_COUNTERMODE_pushUpCounter = 0;
-bool TRAINING_COUNTERMODE_flagUp=false;
-bool TRAINING_COUNTERMODE_flagDown=false;
-uint8_t TRAINING_COUNTERMODE_restartCounterTraining=0;
+bool TRAINING_COUNTERMODE_flagUp = false;
+bool TRAINING_COUNTERMODE_flagDown = false;
+uint8_t TRAINING_COUNTERMODE_restartCounterTraining = 0;
 
 
 
@@ -120,8 +130,11 @@ uint8_t training_partnerMode_P2Color = 0;
 bool traininig_partnerMode_stopTimeIntervalFlag = false;
 uint8_t traininig_partnerMode_stopTimeInterval = 0;
 
-bool training_counterMode_setRepsFlag=false;
-uint8_t training_counterMode_setReps=0;
+bool training_counterMode_setRepsFlag = false;
+uint8_t training_counterMode_setReps = 0;
+
+bool training_SelectNrOfECUsFlag = false;
+uint8_t training_SelectNrOfECUs = 0;
 
 unsigned long debounceDelay = 200;
 volatile unsigned long lastDebounce = 0;
@@ -140,14 +153,13 @@ bool buttonPushValid(void) {
       interruptModeSelection++;
       isbuttonpressed = false;
       lastDebounce = millis();
-      Serial.print("interruptModeSelection:");
-      Serial.println(interruptModeSelection);
       return true;
     }
   }
   return false;
 }
 
+bool TRAINING_SelectNrOfECUsFunction(void);
 bool TRAINING_counterSetSelectionFunction(void);
 bool TRAINING_nrOfColorsFunction(void);
 bool TRAINING_stopTimeDurationFunction(void);
@@ -156,7 +168,7 @@ bool TRAINING_selectColor_P2(void);
 bool TRAINING_CounterModeSetReps(void);
 
 uint16_t TRAINING_stopTimeDurationFunctionHelper(void) {
-  return interruptModeSelection * 500;
+  return interruptModeSelection * 100;
 }
 
 uint8_t TRAINING_counterSetSelectionFunctionHelper(void) {
@@ -165,6 +177,9 @@ uint8_t TRAINING_counterSetSelectionFunctionHelper(void) {
 
 
 uint8_t counterExercise = 0;
+uint8_t counterExercise_p2 = 0;
+uint8_t playerToken;
+bool tokenTaken = 0;
 /******************************** TRAINING MODE SELECTION ******************************/
 
 /********************************ESP NOW COMMUNICATION CODE ******************************/
@@ -175,18 +190,16 @@ uint8_t counterExercise = 0;
 #define MACADDRESSSIZE 6                       //Mac address size
 #define NO_ECU 0                               //No ecu with the define MY_ECU 0
 #define RGBCLEARDELAY 100                      //delay to be used with RGB clear ?TBD
-  /*replaceValueHere*/ #define AVAILABLEECU 3  //Nr of ECUs to be used
+  /*replaceValueHere*/ #define AVAILABLEECU 4  //Nr of ECUs to be used
 #define MAXAVAILABLEECU 10                     // I think ESPNOW supports up to 10 devices
-
-
-
 
   //Receivers ECUS addreses.Add all of them here.
 
-  /*replaceValueHere*/                                                                       //uint8_t receiverAddress1[] = {0xAC, 0x0B, 0xFB, 0xCF, 0xC1, 0x0F};    //  this ECU MAC address ,only for example purposes
-  /*replaceValueHere*/ uint8_t receiverAddress2[] = { 0xAC, 0x0B, 0xFB, 0xCF, 0xD8, 0xB1 };  //  ECU 2
-/*replaceValueHere*/ uint8_t receiverAddress3[] = { 0xF4, 0xCF, 0xA2, 0x79, 0x23, 0x84 };    //  ECU 3
-///*replaceValueHere*/ uint8_t receiverAddress4[] = { 0x4C, 0xEB, 0xD6, 0x62, 0x09, 0x54 };    //  ECU 4
+  // /*replaceValueHere*/ uint8_t receiverAddress1[] = { 0xF4, 0xCF, 0xA2, 0x5D, 0x75, 0x28 };    //  this ECU MAC address ,only for example purposes
+  /*replaceValueHere*/ uint8_t receiverAddress2[] = { 0xAC, 0x0B, 0xFB, 0xCF, 0xC1, 0x0F };  //  ECU 2
+/*replaceValueHere*/ uint8_t receiverAddress3[] = { 0xAC, 0x0B, 0xFB, 0xCF, 0xD8, 0xB1 };    //  ECU 3
+/*replaceValueHere*/ uint8_t receiverAddress4[] = { 0xF4, 0xCF, 0xA2, 0x79, 0x23, 0x84 };    //  ECU 4
+// /*replaceValueHere*/ uint8_t receiverAddress4[] = { 0x4C, 0xEB, 0xD6, 0x62, 0x09, 0x54 };    //  ECU 5
 
 uint8_t receiverECU_Address[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };  //Placeholder for the receiver address
 
@@ -198,13 +211,12 @@ struct __attribute__((packed)) dataPacketAlone {
 };
 
 struct __attribute__((packed)) dataPacketPartner {
-  uint8_t LED_Token_P1;  // Token for activating ECUs
-  uint8_t LED_Token_P2;  // Token for activating ECUs
-  uint8_t counterExerciseP1;
-  uint8_t counterExerciseP2;
+  uint8_t LED_Token_Partner = 1;
+  uint8_t counterExercisePartner;
 };
 
 struct __attribute__((packed)) dataPacketSettings {
+  uint8_t training_NrOfEcus;
   uint8_t training_trainingType;
   uint8_t training_nrOfColors;
   uint8_t training_counterValStop;
@@ -229,14 +241,47 @@ transmissionState_en TransmisionStatus = DATARECEIVED_en;     //Transmision Stat
 dataPacketPartner packetPartner;
 dataPacketSettings packetSettings;
 
+dataPacketPartner partnerLocal;
 
-/*replaceValueHere*/ void initReceiverAddress(void) {
+
+void initReceiverAddress(void) {
+
 
   // memcpy(&receiverArray[0], NOECU, 6); //no ECU is allowed to be on 0 position
-  // memcpy(&receiverArray[0], receiverAddress1, 6);  //This is my ECU position doesn't need to be filed.
-  memcpy(&receiverArray[2], receiverAddress2, 6);
-  memcpy(&receiverArray[3], receiverAddress3, 6);
-  //memcpy(&receiverArray[4], receiverAddress4, 6);
+  // memcpy(&receiverArray[1], receiverAddress1, 6);  //This is my ECU position doesn't need to be filed.
+  switch (training_SelectNrOfECUs) {
+    case 1:
+      memcpy(&receiverArray[2], receiverAddress2, 6);
+      esp_now_add_peer(receiverAddress2, RECEIVER_ROLE, WIFI_CHANNEL, NULL, 0);
+      break;
+
+    case 2:
+      memcpy(&receiverArray[2], receiverAddress2, 6);
+      memcpy(&receiverArray[3], receiverAddress3, 6);
+      esp_now_add_peer(receiverAddress2, RECEIVER_ROLE, WIFI_CHANNEL, NULL, 0);
+      esp_now_add_peer(receiverAddress3, RECEIVER_ROLE, WIFI_CHANNEL, NULL, 0);
+      break;
+
+    case 3:
+      memcpy(&receiverArray[2], receiverAddress2, 6);
+      memcpy(&receiverArray[3], receiverAddress3, 6);
+      memcpy(&receiverArray[4], receiverAddress4, 6);
+      esp_now_add_peer(receiverAddress2, RECEIVER_ROLE, WIFI_CHANNEL, NULL, 0);
+      esp_now_add_peer(receiverAddress3, RECEIVER_ROLE, WIFI_CHANNEL, NULL, 0);
+      esp_now_add_peer(receiverAddress4, RECEIVER_ROLE, WIFI_CHANNEL, NULL, 0);
+      break;
+
+    case 4:
+      memcpy(&receiverArray[2], receiverAddress2, 6);
+      memcpy(&receiverArray[3], receiverAddress3, 6);
+      memcpy(&receiverArray[4], receiverAddress4, 6);
+      //to add
+      esp_now_add_peer(receiverAddress2, RECEIVER_ROLE, WIFI_CHANNEL, NULL, 0);
+      esp_now_add_peer(receiverAddress3, RECEIVER_ROLE, WIFI_CHANNEL, NULL, 0);
+      esp_now_add_peer(receiverAddress4, RECEIVER_ROLE, WIFI_CHANNEL, NULL, 0);
+      //to add
+      break;
+  }
   //.......
   //and so on until MAXAVAILABLEECU
 }
@@ -251,24 +296,16 @@ void initESPNOWcomm(void) {
     return;
   }
 
+  Serial.print("ESP Board MAC Address:  ");
+  Serial.println(WiFi.macAddress());
+
   esp_now_set_self_role(MY_ROLE);
   esp_now_register_send_cb(transmissionComplete);  // this function will get called once all data is sent
   esp_now_register_recv_cb(dataReceived);          // this function will get called whenever we receive data
 
-  /*replaceValueHere*/  //add peers here or modify the reciverAddress to the right ECUS
-  esp_now_add_peer(receiverAddress2, RECEIVER_ROLE, WIFI_CHANNEL, NULL, 0);
-  esp_now_add_peer(receiverAddress3, RECEIVER_ROLE, WIFI_CHANNEL, NULL, 0);
-  // esp_now_add_peer(receiverAddress4, RECEIVER_ROLE, WIFI_CHANNEL, NULL, 0);
-
-  initReceiverAddress();
+ // initReceiverAddress();
 }
 /********************************ESP NOW COMMUNICATION CODE ******************************/
-
-
-
-
-
-
 
 /******************************** RGB LED CODE  ******************************/
 //RGB Defines
@@ -276,8 +313,6 @@ void initESPNOWcomm(void) {
 #define RGBLEDNUM 16
 #define NUMBEROFCOLORS 7
 Adafruit_NeoPixel pixels(RGBLEDNUM, RGBDATAPIN, NEO_GRB + NEO_KHZ800);
-
-
 
 //                                            RED   Green  Blue
 const uint8_t colors[NUMBEROFCOLORS][3] = { { 150, 0, 0 },        //RED
@@ -299,17 +334,20 @@ void selectColorNextCycle(void) {
 
 uint8_t generateRandomColor(void) {
   randomSeed(millis());
+  uint8_t flag = 0;
   uint8_t returnValue = 0;
   uint8_t randomColor = 0;
-  while (returnValue == 0) {
-    randomColor = random(0, training_nrOfColors);
+  while (flag == 0) {
+    randomColor = random(training_nrOfColors);  //function is exclusive
 
     if (training_trainingType == TRAINING_ALLONALLOFF) {
       if (randomColor != trainingAllOnAllOfActiveColorIndex) {  //BLUE is the active LIGHT for ALLONALLOFF
         returnValue = randomColor;
+        flag = 1;
       }
     } else {
       returnValue = randomColor;
+      flag = 1;
     }
   }
   return returnValue;
@@ -323,9 +361,9 @@ void setRGBcolors(uint8_t colorIndex) {
   }
 }
 
-void setRGBColorsNumber(uint8_t number) {
+void setRGBColorsNumber(uint8_t number, uint8_t color) {
   for (int i = 0; i < number; i++) {  // For each pixel...
-    pixels.setPixelColor(i, pixels.Color(colors[training_trainingType][0], colors[training_trainingType][1], colors[training_trainingType][2]));
+    pixels.setPixelColor(i, pixels.Color(colors[color][0], colors[color][1], colors[color][2]));
     pixels.show();  // Send the updated pixel colors to the hardware.
   }
 }
@@ -471,11 +509,16 @@ void initTOFSensor(void) {
 //Callback function after a transmission has been sent
 void transmissionComplete(uint8_t *receiver_mac, uint8_t transmissionStatus) {
   if (transmissionStatus == 0) {
+
+    TRAINING_ALLONALLOFF_sendData++;
     TransmisionStatus = TRANSMISIONSUCCESFULL_en;
+    if (training_allSettingsSent == false) {
+      training_allSettingsSentCounter++;
+    }
   } else {
     TransmisionStatus = SENDDATA_en;
-    Serial.print("Error code: ");
-    Serial.println(transmissionStatus);
+    //  Serial.print("Error code: ");
+    //  Serial.println(transmissionStatus);
   }
 }
 //Callback function after a transmission has been received
@@ -487,19 +530,25 @@ void dataReceived(uint8_t *senderMac, uint8_t *data, uint8_t dataLength) {
   Serial.print("Received data from: ");
   Serial.println(macStr);
 
-  memcpy(&packetAlone, data, sizeof(packetAlone));
+  switch (dataLength) {
+    case 2:
+      memcpy(&packetAlone, data, sizeof(packetAlone));
+      break;
 
+    case 4:
 
-  Serial.print("LED_TOKEN: ");
-  Serial.println(data[0]);
+      if (playerToken == 0) {
+        memcpy(&partnerLocal, data, sizeof(partnerLocal));
+      } else {
+        memcpy(&packetPartner, data, sizeof(packetPartner));
+        tokenTaken = true;
+      }
 
-  counterExercise = data[1];
-  Serial.print("counterExercise: ");
-  Serial.println(data[1]);
-  training_counterValStopFlag = data[2];
-  Serial.print("stopExercise: ");
-  Serial.println(data[2]);
-
+      break;
+    case 8:
+      memcpy(&packetSettings, data, sizeof(packetSettings));
+      break;
+  }
   TransmisionStatus = DATARECEIVED_en;
 }
 /******************************** Logic CODE  ******************************/
@@ -507,18 +556,19 @@ void dataReceived(uint8_t *senderMac, uint8_t *data, uint8_t dataLength) {
 uint8_t randomECUSelection = 0;
 
 uint8_t randomECUselect(void) {
-
+  Serial.println("randomECUselectstart");
   randomSeed(millis());
   uint8_t returnValue = 0;
   uint8_t randomNumber = 0;
   while (returnValue == 0) {
-    randomNumber = random(1, AVAILABLEECU + 1);
-
+    randomNumber = random(0, training_SelectNrOfECUs + 2);  //we have +2 because 1 is master and the function is exclusive
+    Serial.print("randomNumber:");
+    Serial.println(randomNumber);
     if ((randomNumber != MY_ECU) && (randomNumber != NO_ECU)) {
       returnValue = randomNumber;
     }
   }
-
+  Serial.println(" randomECUselect");
   return returnValue;
 }
 
@@ -594,49 +644,48 @@ void startOfNewTraining(void) {
   }
 }
 
-void endOfTrainingCounter(void)
-{
-  uint16_t distanceVal=0;
-    for (int i = 0; i < RGBLEDNUM; i++) {
-      pixels.setPixelColor(i, pixels.Color(0, 0, 150));
-      pixels.show();
-    }
-    delay(100);
+void endOfTrainingCounter(void) {
+  uint16_t distanceVal = 0;
+  for (int i = 0; i < RGBLEDNUM; i++) {
+    pixels.setPixelColor(i, pixels.Color(0, 0, 150));
+    pixels.show();
+  }
+  delay(100);
+  pixels.clear();
+  pixels.show();
+  for (int i = 0; i < RGBLEDNUM; i++) {
+    pixels.setPixelColor(i, pixels.Color(150, 0, 0));
+    pixels.show();
+  }
+  delay(100);
+  pixels.clear();
+  pixels.show();
+  for (int i = 0; i < RGBLEDNUM; i++) {
+    pixels.setPixelColor(i, pixels.Color(100, 100, 100));
+    pixels.show();
+  }
+  delay(100);
+  pixels.clear();
+  pixels.show();
+  distanceVal = sensor.readRangeSingleMillimeters();
+  if (distanceVal < 100) {
+    TRAINING_COUNTERMODE_restartCounterTraining++;
+  }
+  if (TRAINING_COUNTERMODE_restartCounterTraining > 10) {
+    TRAINING_COUNTERMODE_restartCounterTraining = 0;
+    TRAINING_COUNTERMODE_pushUpCounter = 0;
     pixels.clear();
     pixels.show();
-    for (int i = 0; i < RGBLEDNUM; i++) {
-      pixels.setPixelColor(i, pixels.Color(150, 0, 0));
-      pixels.show();
-    }
     delay(100);
+    for (int i = 0; i < RGBLEDNUM; i++) {
+      pixels.setPixelColor(i, pixels.Color(0, 100, 0));
+      pixels.show();
+      delay(50);
+    }
+    delay(1000);
     pixels.clear();
     pixels.show();
-    for (int i = 0; i < RGBLEDNUM; i++) {
-      pixels.setPixelColor(i, pixels.Color(100, 100, 100));
-      pixels.show();
-    }
-    delay(100);
-    pixels.clear();
-    pixels.show();
-    distanceVal = sensor.readRangeSingleMillimeters();
-    if (distanceVal < 100) {
-      TRAINING_COUNTERMODE_restartCounterTraining++;
-    }
-    if (TRAINING_COUNTERMODE_restartCounterTraining > 10) {
-      TRAINING_COUNTERMODE_restartCounterTraining = 0;
-      TRAINING_COUNTERMODE_pushUpCounter = 0;
-      pixels.clear();
-      pixels.show();
-      delay(100);
-      for (int i = 0; i < RGBLEDNUM; i++) {
-        pixels.setPixelColor(i, pixels.Color(0, 100, 0));
-        pixels.show();
-        delay(50);
-      }
-      delay(1000);
-      pixels.clear();
-      pixels.show();
-    }
+  }
 }
 
 
@@ -657,6 +706,8 @@ void startOptionSelection(void) {
         training_trainingType = lModeSelect;
         training_tipeOfTrainingFlag = true;
         interruptModeSelection = 0;
+        intrerruptTOF = false;
+        TOFsensor.VL6180xClearInterrupt();
         Serial.print("modeSelect:");
         Serial.println(lModeSelect);
         clearRGBcolors();
@@ -667,6 +718,12 @@ void startOptionSelection(void) {
       case TRAINING_SIMPLE:
 
         switch (TRAINING_SIMPLE_selection) {
+          case TRAINING_SIMPLE_SelectNrOfECUs:
+            if (TRAINING_SelectNrOfECUsFunction()) {
+              TRAINING_SIMPLE_selection = TRAINING_SIMPLE_NrOfColorSelection;
+            }
+            break;
+
           case TRAINING_SIMPLE_NrOfColorSelection:
             if (TRAINING_nrOfColorsFunction()) {
               TRAINING_SIMPLE_selection = TRAINING_SIMPLE_counterSetSelection;
@@ -683,6 +740,12 @@ void startOptionSelection(void) {
 
       case TRAINING_ALLONALLOFF:
         switch (TRAINING_ALLONALLOFF_selection) {
+          case TRAINING_ALLONALLOFF_SelectNrOfECUs:
+            if (TRAINING_SelectNrOfECUsFunction()) {
+              TRAINING_ALLONALLOFF_selection = TRAINING_ALLONALLOFF_NrOfColorSelection;
+            }
+            break;
+
           case TRAINING_ALLONALLOFF_NrOfColorSelection:
             if (TRAINING_nrOfColorsFunction()) {
               TRAINING_ALLONALLOFF_selection = TRAINING_ALLONALLOFF_counterSetSelection;
@@ -706,6 +769,12 @@ void startOptionSelection(void) {
 
       case TRAINING_RETURNTOMASTER:
         switch (TRAINING_RETURNTOMASTER_selection) {
+          case TRAINING_RETURNTOMASTER_SelectNrOfECUs:
+            if (TRAINING_SelectNrOfECUsFunction()) {
+              TRAINING_RETURNTOMASTER_selection = TRAINING_RETURNTOMASTER_NrOfColorSelection;
+            }
+            break;
+
           case TRAINING_RETURNTOMASTER_NrOfColorSelection:
             if (TRAINING_nrOfColorsFunction()) {
               TRAINING_RETURNTOMASTER_selection = TRAINING_RETURNTOMASTER_counterSetSelection;
@@ -786,6 +855,29 @@ void startOptionSelection(void) {
   }
 }
 
+void sendSettingsData(void) {
+  packetSettings.training_NrOfEcus = training_SelectNrOfECUs;
+  packetSettings.training_counterValStop = training_counterValStop;
+  packetSettings.training_stopTimeDuration = training_stopTimeDuration;
+  packetSettings.training_nrOfColors = training_nrOfColors;
+  packetSettings.training_partnerMode_P1Color = training_partnerMode_P1Color;
+  packetSettings.training_partnerMode_P2Color = training_partnerMode_P2Color;
+  packetSettings.training_trainingType = training_trainingType;
+  initReceiverAddress();
+  if ((TransmisionStatus == TRANSMISIONSUCCESFULL_en) || (TransmisionStatus == DATARECEIVED_en)) {
+    esp_now_send(NULL, (uint8_t *)&packetSettings, sizeof(packetSettings));
+    TransmisionStatus = SENDINGDATA_en;
+    Serial.println("sending");
+  }
+  if (training_allSettingsSentCounter > (training_SelectNrOfECUs )) {
+    Serial.println("datasent");
+    training_allSettingsSent = true;
+    
+    intrerruptTOF = false;
+    TOFsensor.VL6180xClearInterrupt();
+    showBatteryPercentage();
+  }
+}
 
 /******************************** Logic CODE  ******************************/
 
@@ -822,38 +914,41 @@ void loop() {
   if (training_startTraining_Flag == false) {
     startOptionSelection();
   } else {
+    if (training_allSettingsSent == false) {
+      sendSettingsData();
+    } else {
+      switch (training_trainingType) {
+        case TRAINING_SIMPLE:
+          trainingSimpleMain();
+          break;
 
-    switch (training_trainingType) {
-      case TRAINING_SIMPLE:
-        trainingSimpleMain();
-        break;
+        case TRAINING_ALLONALLOFF:
+          trainingAllOnAllOffMain();
+          break;
 
-      case TRAINING_ALLONALLOFF:
-        trainingAllOnAllOffMain();
-        break;
+        case TRAINING_RETURNTOMASTER:
+          trainingReturnToMasterMain();
+          break;
 
-      case TRAINING_RETURNTOMASTER:
-        trainingReturnToMasterMain();
-        break;
+        case TRAINING_PARTNERMODE:
+          trainingPartnerModeMain();
+          break;
 
-      case TRAINING_PARTNERMODE:
-        trainingPartnerModeMain();
-        break;
+        case TRAINING_PARTNERMODERACE:
+          trainingPartnerModeRaceMain();
+          break;
 
-      case TRAINING_PARTNERMODERACE:
-        trainingPartnerModeRaceMain();
-        break;
-
-      case TRAINING_COUNTERMODE:
-        trainingCounterModeMain();
-        break;
+        case TRAINING_COUNTERMODE:
+          trainingCounterModeMain();
+          break;
+      }
     }
   }
 }
 
 
 void trainingSimpleMain(void) {
-  if (counterExercise < training_counterValStopFlag) {
+  if (counterExercise < training_counterValStop) {
     if (millis() - timeFlag > 500) {
       randomECUSelection = randomECUselect();
       timeFlag = millis();
@@ -870,7 +965,7 @@ void trainingSimpleMain(void) {
         //delay(RGBCLEARDELAY);  //why did i used this ???
         clearRGBcolors();
         TOFsensor.VL6180xClearInterrupt();
-
+        counterExercise = packetAlone.counterExerciseData;
         counterExercise++;
         packetAlone.counterExerciseData = counterExercise;
         Serial.print("counter:");
@@ -881,11 +976,9 @@ void trainingSimpleMain(void) {
       }
     } else {
       if (TransmisionStatus == SENDDATA_en) {
-
-        char macStr[18];
-        snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x", receiverECU_Address[0], receiverECU_Address[1], receiverECU_Address[2], receiverECU_Address[3], receiverECU_Address[4], receiverECU_Address[5]);
-        Serial.print("sending to:");
-        Serial.println(macStr);
+        Serial.print("randomECUSelection ");
+        Serial.println(randomECUSelection);
+          
         esp_now_send(receiverECU_Address, (uint8_t *)&packetAlone, sizeof(packetAlone));
         TransmisionStatus = SENDINGDATA_en;
       } else {
@@ -906,6 +999,10 @@ void trainingSimpleMain(void) {
     }
 
   } else {
+    Serial.print("counterExercise: ");
+    Serial.println(counterExercise);
+    Serial.print("training_counterValStopFlag: ");
+    Serial.println(counterExercise);
     if (flag < 5) {
       endOfTrainingLight();
     } else {
@@ -916,19 +1013,24 @@ void trainingSimpleMain(void) {
 }
 
 void trainingAllOnAllOffMain(void) {
-  if (TransmisionStatus == DATARECEIVED_en || TRAINING_ALLONALLOFF_sendData >= (AVAILABLEECU - 1)) {
+
+  if (TransmisionStatus == DATARECEIVED_en || TRAINING_ALLONALLOFF_sendData >= (training_SelectNrOfECUs - 1)) {
+    Serial.print("debug");
     countTime = millis();
     while (millis() - countTime < training_stopTimeDuration) {
       clearRGBcolors();
     }
     TRAINING_ALLONALLOFF_sendData = 0;
     TransmisionStatus = ONLYRECEIVE_en;
+    selectColor = generateRandomColor();
+    setRGBcolors(selectColor);
+    Serial.print("debug2");
   }
 
-  if (counterExercise < training_counterValStopFlag) {
+  if (counterExercise < training_counterValStop) {
     if (millis() - timeFlag > 500) {
       randomECUSelection = randomECUselect();
-      selectColor = generateRandomColor();
+
       timeFlag = millis();
     }
 
@@ -942,13 +1044,14 @@ void trainingAllOnAllOffMain(void) {
         //delay(RGBCLEARDELAY);  //why did i used this ???
         clearRGBcolors();
         TOFsensor.VL6180xClearInterrupt();
+        counterExercise = packetAlone.counterExerciseData;
         counterExercise++;
         packetAlone.counterExerciseData = counterExercise;
       } else {
         //do nothing but wait
       }
     } else {
-      setRGBcolors(selectColor);
+
       if (TransmisionStatus == SENDDATA_en) {
 
         char macStr[18];
@@ -967,7 +1070,7 @@ void trainingAllOnAllOffMain(void) {
           TOFsensor.VL6180xClearInterrupt();
         } else {
           if (TransmisionStatus == ONLYRECEIVE_en) {
-
+            setRGBcolors(selectColor);
             intrerruptTOF = false;
             TOFsensor.VL6180xClearInterrupt();
           }
@@ -987,7 +1090,7 @@ void trainingAllOnAllOffMain(void) {
 
 void trainingReturnToMasterMain(void) {
 
-  if (counterExercise < training_counterValStopFlag) {
+  if (counterExercise < training_counterValStop) {
     if (millis() - timeFlag > 500) {
       randomECUSelection = randomECUselect();
       timeFlag = millis();
@@ -1004,7 +1107,8 @@ void trainingReturnToMasterMain(void) {
         //delay(RGBCLEARDELAY);  //why did i used this ???
         clearRGBcolors();
         TOFsensor.VL6180xClearInterrupt();
-        counterExercise++;
+        counterExercise = packetAlone.counterExerciseData;
+        //counterExercise++;
         packetAlone.counterExerciseData = counterExercise;
       } else {
         //do nothing but wait
@@ -1045,7 +1149,43 @@ void trainingReturnToMasterMain(void) {
 }
 
 void trainingPartnerModeMain(void) {
-  //add control Code
+  if (partnerLocal.counterExercisePartner) {
+    if (millis() - timeFlag > 500) {
+      randomECUSelection = randomECUselect();
+      timeFlag = millis();
+    }
+    if (tokenTaken == true) {
+      TRAINING_PARTNERMODE_TokenTaken();
+    } else {
+      switch (playerToken) {
+        case 1:
+          TRAINING_PARTNERMODE_player1Loop();
+          break;
+
+        case 2:
+          TRAINING_PARTNERMODE_player2Loop();
+          break;
+
+        default:
+          if (TransmisionStatus == ONLYRECEIVE_en) {
+            intrerruptTOF = false;
+            clearRGBcolors();
+            TOFsensor.VL6180xClearInterrupt();
+          }
+          break;
+      }
+    }
+
+
+
+  } else {
+    if (flag < 5) {
+      endOfTrainingLight();
+    } else {
+      startOfNewTraining();
+      Serial.print("Reset");
+    }
+  }
 }
 
 void trainingPartnerModeRaceMain(void) {
@@ -1092,10 +1232,96 @@ void trainingCounterModeMain(void) {
     }
   } else {
     endOfTrainingCounter();
+  }
+}
+
+void TRAINING_PARTNERMODE_player1Loop(void) {
+  if (partnerLocal.LED_Token_Partner == playerToken) {
+    setRGBcolors(training_partnerMode_P1Color);
+    //Is the sensor active and the ECU is valid ?
+    if (intrerruptTOF) {
+      selectColor = generateRandomColor();
+      Serial.println("Intrerupt received");
+      intrerruptTOF = false;
+      selectECU_number(randomECUSelection);
+      //delay(RGBCLEARDELAY);  //why did i used this ???
+      clearRGBcolors();
+      TOFsensor.VL6180xClearInterrupt();
+      partnerLocal.counterExercisePartner++;
+
+    } else {
+      //do nothing but wait
+    }
+  } else {
+    if (TransmisionStatus == SENDDATA_en) {
+      char macStr[18];
+      snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x", receiverECU_Address[0], receiverECU_Address[1], receiverECU_Address[2], receiverECU_Address[3], receiverECU_Address[4], receiverECU_Address[5]);
+      Serial.print("sending to:");
+      Serial.println(macStr);
+      esp_now_send(receiverECU_Address, (uint8_t *)&partnerLocal, sizeof(partnerLocal));
+      TransmisionStatus = SENDINGDATA_en;
+    } else {
+      if (TransmisionStatus == TRANSMISIONSUCCESFULL_en) {
+
+        Serial.println("Transmision succesful");
+        TransmisionStatus = ONLYRECEIVE_en;
+        intrerruptTOF = false;
+        TOFsensor.VL6180xClearInterrupt();
+        playerToken = 0;
+      }
     }
   }
+}
 
+void TRAINING_PARTNERMODE_player2Loop(void) {
+  if (partnerLocal.LED_Token_Partner == playerToken) {
+    setRGBcolors(training_partnerMode_P2Color);
+    //Is the sensor active and the ECU is valid ?
+    if (intrerruptTOF) {
+      selectColor = generateRandomColor();
+      Serial.println("Intrerupt received");
+      intrerruptTOF = false;
+      selectECU_number(randomECUSelection);
+      //delay(RGBCLEARDELAY);  //why did i used this ???
+      clearRGBcolors();
+      TOFsensor.VL6180xClearInterrupt();
+      partnerLocal.counterExercisePartner++;
 
+    } else {
+      //do nothing but wait
+    }
+  } else {
+    if (TransmisionStatus == SENDDATA_en) {
+      char macStr[18];
+      snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x", receiverECU_Address[0], receiverECU_Address[1], receiverECU_Address[2], receiverECU_Address[3], receiverECU_Address[4], receiverECU_Address[5]);
+      Serial.print("sending to:");
+      Serial.println(macStr);
+      esp_now_send(receiverECU_Address, (uint8_t *)&partnerLocal, sizeof(partnerLocal));
+      TransmisionStatus = SENDINGDATA_en;
+    } else {
+      if (TransmisionStatus == TRANSMISIONSUCCESFULL_en) {
+
+        Serial.println("Transmision succesful");
+        TransmisionStatus = ONLYRECEIVE_en;
+        intrerruptTOF = false;
+        TOFsensor.VL6180xClearInterrupt();
+        playerToken = 0;
+      }
+    }
+  }
+}
+
+void TRAINING_PARTNERMODE_TokenTaken(void) {
+  selectECU_number(randomECUSelection);
+  if (TransmisionStatus == SENDDATA_en) {
+    char macStr[18];
+    snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x", receiverECU_Address[0], receiverECU_Address[1], receiverECU_Address[2], receiverECU_Address[3], receiverECU_Address[4], receiverECU_Address[5]);
+    Serial.print("sending to:");
+    Serial.println(macStr);
+    esp_now_send(receiverECU_Address, (uint8_t *)&packetPartner, sizeof(packetPartner));
+    TransmisionStatus = SENDINGDATA_en;
+  }
+}
 
 bool TRAINING_counterSetSelectionFunction(void) {
   bool lreturn = false;
@@ -1107,7 +1333,7 @@ bool TRAINING_counterSetSelectionFunction(void) {
       intrerruptTOF = false;
       TOFsensor.VL6180xClearInterrupt();
     }
-    setRGBColorsNumber(interruptModeSelection);
+    setRGBColorsNumber(interruptModeSelection, 0);  //red
     if (intrerruptTOF == true && setCounter != 0) {
       training_counterValStop = setCounter;
       training_counterValStopFlag = true;
@@ -1116,6 +1342,32 @@ bool TRAINING_counterSetSelectionFunction(void) {
       TOFsensor.VL6180xClearInterrupt();
       Serial.print("training_counterValStop:");
       Serial.println(training_counterValStop);
+      clearRGBcolors();
+      lreturn = true;
+    }
+  }
+  return lreturn;
+}
+
+bool TRAINING_SelectNrOfECUsFunction(void) {
+  bool lreturn = false;
+  uint8_t setCounter;
+  if (training_SelectNrOfECUsFlag == false) {
+    buttonPushValid();
+    setCounter = interruptModeSelection;
+    if (setCounter != 0) {
+      intrerruptTOF = false;
+      TOFsensor.VL6180xClearInterrupt();
+    }
+    setRGBColorsNumber(interruptModeSelection, 6);  //white
+    if (intrerruptTOF == true && setCounter != 0) {
+      training_SelectNrOfECUs = setCounter;
+      training_SelectNrOfECUsFlag = true;
+      interruptModeSelection = 0;
+      intrerruptTOF = false;
+      TOFsensor.VL6180xClearInterrupt();
+      Serial.print("training_SelectNrOfECUs:");
+      Serial.println(training_SelectNrOfECUs);
       clearRGBcolors();
       lreturn = true;
     }
@@ -1133,7 +1385,7 @@ bool TRAINING_nrOfColorsFunction(void) {
       intrerruptTOF = false;
       TOFsensor.VL6180xClearInterrupt();
     }
-    setRGBColorsNumber(interruptModeSelection);
+    setRGBColorsNumber(interruptModeSelection, 1);  //green
     if (intrerruptTOF == true && setColor != 0) {
       training_nrOfColors = setColor;
       training_nrOfColorsFlag = true;
@@ -1159,15 +1411,15 @@ bool TRAINING_stopTimeDurationFunction(void) {
       intrerruptTOF = false;
       TOFsensor.VL6180xClearInterrupt();
     }
-    setRGBColorsNumber(interruptModeSelection);
+    setRGBColorsNumber(interruptModeSelection, 2);  //blue
     if (intrerruptTOF == true && stopDuration != 0) {
       training_stopTimeDuration = stopDuration;
       training_counterValStopFlag = true;
       interruptModeSelection = 0;
       intrerruptTOF = false;
       TOFsensor.VL6180xClearInterrupt();
-      Serial.print("training_counterValStop:");
-      Serial.println(training_counterValStop);
+      Serial.print("stopDuration:");
+      Serial.println(stopDuration);
       clearRGBcolors();
       lreturn = true;
     }
@@ -1240,7 +1492,7 @@ void setupTrainingCounterMode(void) {
   sensor.setTimeout(500);
 }
 
-bool TRAINING_CounterModeSetReps (void){
+bool TRAINING_CounterModeSetReps(void) {
   bool lreturn = false;
   uint8_t setReps;
   if (training_counterMode_setRepsFlag == false) {
@@ -1250,10 +1502,10 @@ bool TRAINING_CounterModeSetReps (void){
       intrerruptTOF = false;
       TOFsensor.VL6180xClearInterrupt();
     }
-    if (setReps > RGBLEDNUM ) {
+    if (setReps > RGBLEDNUM) {
       interruptModeSelection = 1;
     }
-    setRGBColorsNumber(interruptModeSelection);
+    setRGBColorsNumber(interruptModeSelection, 3);  // YELLOW
     if (intrerruptTOF == true && setReps != 0) {
       training_counterMode_setReps = setReps;
       training_counterMode_setRepsFlag = true;
