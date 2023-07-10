@@ -406,6 +406,7 @@ void dataReceived(uint8_t *senderMac, uint8_t *data, uint8_t dataLength) {
 
       if (playerToken == 0) {
         memcpy(&partnerLocal, data, sizeof(partnerLocal));
+        playerToken=partnerLocal.LED_Token_Partner;
       } else {
         memcpy(&packetPartner, data, sizeof(packetPartner));
         tokenTaken = true;
@@ -770,7 +771,7 @@ void trainingReturnToMasterMain(void) {
 }
 
 void trainingPartnerModeMain(void) {
-  if (partnerLocal.counterExercisePartner) {
+  if (partnerLocal.counterExercisePartner<packetSettings.training_counterValStop)  {
     if (millis() - timeFlag > 500) {
       randomECUSelection = randomECUselect();
       timeFlag = millis();
@@ -845,7 +846,7 @@ void TRAINING_PARTNERMODE_player1Loop(void) {
         TransmisionStatus = ONLYRECEIVE_en;
         intrerruptTOF = false;
         TOFsensor.VL6180xClearInterrupt();
-        playerToken = 0;
+        
       }
     }
   }

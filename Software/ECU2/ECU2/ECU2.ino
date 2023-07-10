@@ -52,8 +52,8 @@ void trainingPartnerModeRaceMain(void);
 
 bool settingsReceivedFlag = false;
 uint8_t counterExercise = 0;
-uint8_t playerToken = 0;
-bool tokenTaken = 0;
+uint8_t playerToken = 2;
+bool tokenTaken = false;
 /******************************** TRAINING MODE SELECTION ******************************/
 
 /********************************ESP NOW COMMUNICATION CODE ******************************/
@@ -403,6 +403,7 @@ void dataReceived(uint8_t *senderMac, uint8_t *data, uint8_t dataLength) {
 
       if (playerToken == 0) {
         memcpy(&partnerLocal, data, sizeof(partnerLocal));
+        playerToken=partnerLocal.LED_Token_Partner;
       } else {
         memcpy(&packetPartner, data, sizeof(packetPartner));
         tokenTaken = true;
@@ -432,8 +433,6 @@ uint8_t randomECUselect(void) {
       returnValue = randomNumber;
     }
   }
-  Serial.print("randomNumber");
-  Serial.println(randomNumber);
   return returnValue;
 }
 
@@ -769,7 +768,7 @@ void trainingReturnToMasterMain(void) {
 }
 
 void trainingPartnerModeMain(void) {
-  if (partnerLocal.counterExercisePartner) {
+  if (partnerLocal.counterExercisePartner<packetSettings.training_counterValStop) {
     if (millis() - timeFlag > 500) {
       randomECUSelection = randomECUselect();
       timeFlag = millis();
@@ -844,7 +843,8 @@ void TRAINING_PARTNERMODE_player1Loop(void) {
         TransmisionStatus = ONLYRECEIVE_en;
         intrerruptTOF = false;
         TOFsensor.VL6180xClearInterrupt();
-        playerToken = 0;
+       playerToken = 0;
+        partnerLocal.LED_Token_Partner=0;
       }
     }
   }
@@ -883,6 +883,7 @@ void TRAINING_PARTNERMODE_player2Loop(void) {
         intrerruptTOF = false;
         TOFsensor.VL6180xClearInterrupt();
         playerToken = 0;
+        partnerLocal.LED_Token_Partner=0;
       }
     }
   }
