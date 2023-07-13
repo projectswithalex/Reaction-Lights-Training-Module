@@ -85,6 +85,7 @@ struct __attribute__((packed)) dataPacketAlone {
 };
 
 struct __attribute__((packed)) dataPacketPartner {
+  uint8_t partnerIdentifier=0;
   uint8_t LED_Token_Partner;
   uint8_t counterExercisePartner;
 };
@@ -402,18 +403,15 @@ void dataReceived(uint8_t *senderMac, uint8_t *data, uint8_t dataLength) {
       memcpy(&packetAlone, data, sizeof(packetAlone));
       break;
 
-    case 4:
-
-      if (playerToken == 0) {
+    case 3:
+     if (playerToken == 0) {
+        Serial.println("local");
         memcpy(&partnerLocal, data, sizeof(partnerLocal));
-        playerToken=partnerLocal.LED_Token_Partner;
-        Serial.println();
-        Serial.print("partnerLocal");
+        playerToken = partnerLocal.LED_Token_Partner;
       } else {
+        Serial.println("partner");
         memcpy(&packetPartner, data, sizeof(packetPartner));
         tokenTaken = true;
-        Serial.println();
-        Serial.print("tokenTaken");
       }
 
       break;
@@ -796,8 +794,9 @@ void trainingPartnerModeMain(void) {
         default:
           if (TransmisionStatus == ONLYRECEIVE_en) {
             intrerruptTOF = false;
-            clearRGBcolors();
             TOFsensor.VL6180xClearInterrupt();
+            clearRGBcolors();
+            
           }
           break;
       }
