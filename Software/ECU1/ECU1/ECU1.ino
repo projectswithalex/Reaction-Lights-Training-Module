@@ -177,7 +177,7 @@ uint8_t TRAINING_counterSetSelectionFunctionHelper(void) {
 
 
 uint8_t counterExercise = 0;
-uint8_t playerToken=1;
+uint8_t playerToken = 1;
 bool tokenTaken = false;
 /******************************** TRAINING MODE SELECTION ******************************/
 
@@ -210,6 +210,7 @@ struct __attribute__((packed)) dataPacketAlone {
 };
 
 struct __attribute__((packed)) dataPacketPartner {
+  uint8_t partnerIdentifier = 0;
   uint8_t LED_Token_Partner = 1;
   uint8_t counterExercisePartner;
 };
@@ -240,7 +241,7 @@ transmissionState_en TransmisionStatus = DATARECEIVED_en;     //Transmision Stat
 dataPacketPartner packetPartner;
 dataPacketSettings packetSettings;
 
-dataPacketPartner partnerLocal = { 1, 0 };
+dataPacketPartner partnerLocal = { 0, 1, 0 };
 
 
 void initReceiverAddress(void) {
@@ -302,7 +303,7 @@ void initESPNOWcomm(void) {
   esp_now_register_send_cb(transmissionComplete);  // this function will get called once all data is sent
   esp_now_register_recv_cb(dataReceived);          // this function will get called whenever we receive data
 
- // initReceiverAddress();
+  // initReceiverAddress();
 }
 /********************************ESP NOW COMMUNICATION CODE ******************************/
 
@@ -534,12 +535,14 @@ void dataReceived(uint8_t *senderMac, uint8_t *data, uint8_t dataLength) {
       memcpy(&packetAlone, data, sizeof(packetAlone));
       break;
 
-    case 4:
+    case 3:
 
-      if (playerToken == 0) {
+    if (playerToken == 0) {
+        Serial.println("local");
         memcpy(&partnerLocal, data, sizeof(partnerLocal));
-        playerToken=partnerLocal.LED_Token_Partner;
+        playerToken = partnerLocal.LED_Token_Partner;
       } else {
+        Serial.println("partner");
         memcpy(&packetPartner, data, sizeof(packetPartner));
         tokenTaken = true;
       }
@@ -793,7 +796,7 @@ void startOptionSelection(void) {
 
       case TRAINING_PARTNERMODE:
         switch (TRAINING_PARTNERMODE_selection) {
-            case TRAINING_PARTNERMODE_SelectNrOfECUs:
+          case TRAINING_PARTNERMODE_SelectNrOfECUs:
             if (TRAINING_SelectNrOfECUsFunction()) {
               TRAINING_PARTNERMODE_selection = TRAINING_PARTNERMODE_SelectColor_Player1;
             }
@@ -870,13 +873,14 @@ void sendSettingsData(void) {
     esp_now_send(NULL, (uint8_t *)&packetSettings, sizeof(packetSettings));
     TransmisionStatus = SENDINGDATA_en;
   }
-  if (training_allSettingsSentCounter > (training_SelectNrOfECUs )) {
+  if (training_allSettingsSentCounter > (training_SelectNrOfECUs)) {
     Serial.println("datasent");
     training_allSettingsSent = true;
     intrerruptTOF = false;
     TOFsensor.VL6180xClearInterrupt();
-    showBatteryPercentage();
+    //showBatteryPercentage();
     delay(500);
+    TransmisionStatus = ONLYRECEIVE_en;
   }
 }
 
@@ -979,7 +983,7 @@ void trainingSimpleMain(void) {
       if (TransmisionStatus == SENDDATA_en) {
         Serial.print("randomECUSelection ");
         Serial.println(randomECUSelection);
-          
+
         esp_now_send(receiverECU_Address, (uint8_t *)&packetAlone, sizeof(packetAlone));
         TransmisionStatus = SENDINGDATA_en;
       } else {
@@ -1016,7 +1020,7 @@ void trainingSimpleMain(void) {
 void trainingAllOnAllOffMain(void) {
 
   if (TransmisionStatus == DATARECEIVED_en || TRAINING_ALLONALLOFF_sendData >= (training_SelectNrOfECUs - 1)) {
-    
+
     countTime = millis();
     while (millis() - countTime < training_stopTimeDuration) {
       clearRGBcolors();
@@ -1026,9 +1030,9 @@ void trainingAllOnAllOffMain(void) {
     selectColor = generateRandomColor();
     setRGBcolors(selectColor);
     Serial.print("TRAINING_ALLONALLOFF_sendData:");
-     Serial.println(TRAINING_ALLONALLOFF_sendData);
-     Serial.print("TransmisionStatus:");
-     Serial.println(TransmisionStatus);
+    Serial.println(TRAINING_ALLONALLOFF_sendData);
+    Serial.print("TransmisionStatus:");
+    Serial.println(TransmisionStatus);
   }
 
   if (counterExercise < training_counterValStop) {
@@ -1074,7 +1078,7 @@ void trainingAllOnAllOffMain(void) {
           TOFsensor.VL6180xClearInterrupt();
         } else {
           if (TransmisionStatus == ONLYRECEIVE_en) {
-           // setRGBcolors(selectColor);
+            // setRGBcolors(selectColor);
             intrerruptTOF = false;
             TOFsensor.VL6180xClearInterrupt();
           }
@@ -1153,7 +1157,7 @@ void trainingReturnToMasterMain(void) {
 }
 
 void trainingPartnerModeMain(void) {
-  if (partnerLocal.counterExercisePartner<packetSettings.training_counterValStop) {
+  if (partnerLocal.counterExercisePartner < packetSettings.training_counterValStop) {
     if (millis() - timeFlag > 500) {
       randomECUSelection = randomECUselect();
       timeFlag = millis();
@@ -1163,21 +1167,21 @@ void trainingPartnerModeMain(void) {
     } else {
       switch (playerToken) {
         case 1:
-          Serial.println("player1");
+
           TRAINING_PARTNERMODE_player1Loop();
           break;
 
         case 2:
-        Serial.println("player2");
+          
           TRAINING_PARTNERMODE_player2Loop();
           break;
 
         default:
-        Serial.println("player0");
+          // Serial.println("player0");
           if (TransmisionStatus == ONLYRECEIVE_en) {
             intrerruptTOF = false;
-            clearRGBcolors();
             TOFsensor.VL6180xClearInterrupt();
+            clearRGBcolors();
           }
           break;
       }
@@ -1243,105 +1247,101 @@ void trainingCounterModeMain(void) {
 }
 
 void TRAINING_PARTNERMODE_player1Loop(void) {
-  if (partnerLocal.LED_Token_Partner == playerToken) {
-    setRGBcolors(training_partnerMode_P1Color);
-    //Is the sensor active and the ECU is valid ?
-    if (intrerruptTOF) {
-      selectColor = generateRandomColor();
-      Serial.println("Intrerupt received p1");
-      intrerruptTOF = false;
-      selectECU_number(randomECUSelection);
-      //delay(RGBCLEARDELAY);  //why did i used this ???
-      clearRGBcolors();
-      TOFsensor.VL6180xClearInterrupt();
-      partnerLocal.counterExercisePartner++;
-      playerToken = 0;
-
-    } else {
-      //do nothing but wait
-    }
+  setRGBcolors(packetSettings.training_partnerMode_P1Color);
+  //Is the sensor active and the ECU is valid ?
+  if (intrerruptTOF) {
+    selectColor = generateRandomColor();
+    Serial.println("Intrerupt received p1");
+    intrerruptTOF = false;
+    selectECU_number(randomECUSelection);
+    //delay(RGBCLEARDELAY);  //why did i used this ???
+    clearRGBcolors();
+    TOFsensor.VL6180xClearInterrupt();
+    partnerLocal.counterExercisePartner++;
+    TransmisionStatus = SENDDATA_en;
+  }
+  if (TransmisionStatus == SENDDATA_en) {
+    char macStr[18];
+    snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x", receiverECU_Address[0], receiverECU_Address[1], receiverECU_Address[2], receiverECU_Address[3], receiverECU_Address[4], receiverECU_Address[5]);
+    Serial.print("sending to:");
+    Serial.println(macStr);
+    esp_now_send(receiverECU_Address, (uint8_t *)&partnerLocal, sizeof(partnerLocal));
+    TransmisionStatus = SENDINGDATA_en;
   } else {
-    if (TransmisionStatus == SENDDATA_en) {
-      char macStr[18];
-      snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x", receiverECU_Address[0], receiverECU_Address[1], receiverECU_Address[2], receiverECU_Address[3], receiverECU_Address[4], receiverECU_Address[5]);
-      Serial.print("sending to:");
-      Serial.println(macStr);
-      esp_now_send(receiverECU_Address, (uint8_t *)&partnerLocal, sizeof(partnerLocal));
-      TransmisionStatus = SENDINGDATA_en;
-    } else {
-      if (TransmisionStatus == TRANSMISIONSUCCESFULL_en) {
+    if (TransmisionStatus == TRANSMISIONSUCCESFULL_en) {
 
-        Serial.println("Transmision succesful");
-        TransmisionStatus = ONLYRECEIVE_en;
-        intrerruptTOF = false;
-        TOFsensor.VL6180xClearInterrupt();
-        
-        partnerLocal.LED_Token_Partner=0;
-      }
+      Serial.println("Transmision succesful");
+      TransmisionStatus = ONLYRECEIVE_en;
+      intrerruptTOF = false;
+      TOFsensor.VL6180xClearInterrupt();
+      partnerLocal.LED_Token_Partner = 0;
+      playerToken = 0;
     }
   }
 }
 
 void TRAINING_PARTNERMODE_player2Loop(void) {
-  if (partnerLocal.LED_Token_Partner == playerToken) {
-    setRGBcolors(training_partnerMode_P2Color);
-    //Is the sensor active and the ECU is valid ?
-    if (intrerruptTOF) {
-      selectColor = generateRandomColor();
-      Serial.println("Intrerupt received");
-      intrerruptTOF = false;
-      selectECU_number(randomECUSelection);
-      //delay(RGBCLEARDELAY);  //why did i used this ???
-      clearRGBcolors();
-      TOFsensor.VL6180xClearInterrupt();
-      partnerLocal.counterExercisePartner++;
 
-    } else {
-      //do nothing but wait
-    }
+  setRGBcolors(packetSettings.training_partnerMode_P2Color);
+  //Is the sensor active and the ECU is valid ?
+  if (intrerruptTOF) {
+    selectColor = generateRandomColor();
+    Serial.println("Intrerupt received");
+    intrerruptTOF = false;
+    selectECU_number(randomECUSelection);
+    //delay(RGBCLEARDELAY);  //why did i used this ???
+    clearRGBcolors();
+    TOFsensor.VL6180xClearInterrupt();
+    partnerLocal.counterExercisePartner++;
+    TransmisionStatus = SENDDATA_en;
+  }
+  if (TransmisionStatus == SENDDATA_en) {
+    char macStr[18];
+    snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x", receiverECU_Address[0], receiverECU_Address[1], receiverECU_Address[2], receiverECU_Address[3], receiverECU_Address[4], receiverECU_Address[5]);
+    Serial.print("sending to:");
+    Serial.println(macStr);
+    esp_now_send(receiverECU_Address, (uint8_t *)&partnerLocal, sizeof(partnerLocal));
+    TransmisionStatus = SENDINGDATA_en;
   } else {
-    if (TransmisionStatus == SENDDATA_en) {
-      char macStr[18];
-      snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x", receiverECU_Address[0], receiverECU_Address[1], receiverECU_Address[2], receiverECU_Address[3], receiverECU_Address[4], receiverECU_Address[5]);
-      Serial.print("sending to:");
-      Serial.println(macStr);
-      esp_now_send(receiverECU_Address, (uint8_t *)&partnerLocal, sizeof(partnerLocal));
-      TransmisionStatus = SENDINGDATA_en;
-    } else {
-      if (TransmisionStatus == TRANSMISIONSUCCESFULL_en) {
+    if (TransmisionStatus == TRANSMISIONSUCCESFULL_en) {
 
-        Serial.println("Transmision succesful");
-        TransmisionStatus = ONLYRECEIVE_en;
-        intrerruptTOF = false;
-        TOFsensor.VL6180xClearInterrupt();
-        playerToken = 0;
-        partnerLocal.LED_Token_Partner=0;
-        tokenTaken=false;
-      }
+      Serial.println("Transmision succesful");
+      TransmisionStatus = ONLYRECEIVE_en;
+      intrerruptTOF = false;
+      TOFsensor.VL6180xClearInterrupt();
+      playerToken = 0;
+      partnerLocal.LED_Token_Partner = 0;
     }
   }
 }
 
 void TRAINING_PARTNERMODE_TokenTaken(void) {
-  selectECU_number(randomECUSelection);
+
   if (TransmisionStatus == SENDDATA_en) {
     char macStr[18];
     snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x", receiverECU_Address[0], receiverECU_Address[1], receiverECU_Address[2], receiverECU_Address[3], receiverECU_Address[4], receiverECU_Address[5]);
     Serial.print("sending to:");
     Serial.println(macStr);
     esp_now_send(receiverECU_Address, (uint8_t *)&packetPartner, sizeof(packetPartner));
-    TransmisionStatus = SENDINGDATA_en; 
-  }else {
-      if (TransmisionStatus == TRANSMISIONSUCCESFULL_en) {
+    TransmisionStatus = SENDINGDATA_en;
+  } else {
+    if (TransmisionStatus == TRANSMISIONSUCCESFULL_en) {
 
-        Serial.println("Transmision succesful");
-        TransmisionStatus = ONLYRECEIVE_en;
-        intrerruptTOF = false;
-        TOFsensor.VL6180xClearInterrupt();
-        tokenTaken=false;
+      Serial.println("Transmision succesful");
+      TransmisionStatus = ONLYRECEIVE_en;
+      intrerruptTOF = false;
+      TOFsensor.VL6180xClearInterrupt();
+      tokenTaken = false;
+    } else {
+      if (TransmisionStatus == SENDINGDATA_en) {
+
+      } else {
+        selectECU_number(randomECUSelection);
       }
+    }
   }
 }
+
 
 bool TRAINING_counterSetSelectionFunction(void) {
   bool lreturn = false;
@@ -1353,10 +1353,9 @@ bool TRAINING_counterSetSelectionFunction(void) {
       intrerruptTOF = false;
       TOFsensor.VL6180xClearInterrupt();
     }
-    if(setCounter>30)
-    {
-      setCounter=0;
-      interruptModeSelection=0;
+    if (setCounter > 30) {
+      setCounter = 0;
+      interruptModeSelection = 0;
       clearRGBcolors();
     }
     setRGBColorsNumber(interruptModeSelection, 0);  //red
@@ -1385,10 +1384,9 @@ bool TRAINING_SelectNrOfECUsFunction(void) {
       intrerruptTOF = false;
       TOFsensor.VL6180xClearInterrupt();
     }
-    if(setEcuCounter>10)
-    {
-      setEcuCounter=0;
-      interruptModeSelection=0;
+    if (setEcuCounter > 10) {
+      setEcuCounter = 0;
+      interruptModeSelection = 0;
       clearRGBcolors();
     }
     setRGBColorsNumber(interruptModeSelection, 6);  //white
@@ -1417,10 +1415,9 @@ bool TRAINING_nrOfColorsFunction(void) {
       intrerruptTOF = false;
       TOFsensor.VL6180xClearInterrupt();
     }
-    if(setColor>6)
-    {
-      setColor=0;
-      interruptModeSelection=0;
+    if (setColor > 6) {
+      setColor = 0;
+      interruptModeSelection = 0;
       clearRGBcolors();
     }
     setRGBColorsNumber(setColor, 1);  //green
@@ -1441,7 +1438,7 @@ bool TRAINING_nrOfColorsFunction(void) {
 
 bool TRAINING_stopTimeDurationFunction(void) {
   bool lreturn = false;
-  uint16_t stopDuration=0;
+  uint16_t stopDuration = 0;
   if (training_stopTimeDurationFlag == false) {
     buttonPushValid();
     stopDuration = TRAINING_stopTimeDurationFunctionHelper();
@@ -1449,10 +1446,9 @@ bool TRAINING_stopTimeDurationFunction(void) {
       intrerruptTOF = false;
       TOFsensor.VL6180xClearInterrupt();
     }
-    if(stopDuration>1600)
-    {
-      stopDuration=0;
-      interruptModeSelection=0;
+    if (stopDuration > 1200) {
+      stopDuration = 0;
+      interruptModeSelection = 0;
       clearRGBcolors();
     }
     setRGBColorsNumber(interruptModeSelection, 2);  //blue
@@ -1475,7 +1471,7 @@ bool TRAINING_selectColor_P1(void) {
   bool lreturn = false;
   uint8_t setColor;
   if (training_partnerMode_P1ColorFlag == false) {
-    
+
     buttonPushValid();
     setColor = interruptModeSelection;
     if (setColor != 0) {
