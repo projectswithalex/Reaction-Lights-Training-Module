@@ -59,6 +59,7 @@ enum TRAINING_ALLONALLOFF_en {
 };
 TRAINING_ALLONALLOFF_en TRAINING_ALLONALLOFF_selection;
 void trainingAllOnAllOffMain(void);
+
 uint8_t TRAINING_ALLONALLOFF_sendData = 0;
 uint8_t trainingAllOnAllOfActiveColorIndex = 0;  //red
 
@@ -139,14 +140,19 @@ bool training_SelectNrOfECUsFlag = false;
 uint8_t training_SelectNrOfECUs = 0;
 
 unsigned long debounceDelay = 200;
+unsigned long longDebounce = 3000;
 volatile unsigned long lastDebounce = 0;
 volatile uint8_t interruptModeSelection = 0;
 volatile bool isbuttonpressed = 0;
+
+uint8_t startNewTraining = 0;
 
 ICACHE_RAM_ATTR void handleInterruptSEL() {
   lastDebounce = millis();
   isbuttonpressed = true;
 }
+
+
 
 bool buttonPushValid(void) {
   //unsigned long start = millis();
@@ -160,6 +166,22 @@ bool buttonPushValid(void) {
   }
   return false;
 }
+
+
+bool buttonLongPush(void) {
+  if (isbuttonpressed) {
+    Serial.print("pressed:");
+    Serial.println(lastDebounce);
+
+    if (millis() - lastDebounce > longDebounce) {
+      isbuttonpressed = false;
+      lastDebounce = millis();
+      return true;
+    }
+  }
+  return false;
+}
+
 
 bool TRAINING_SelectNrOfECUsFunction(void);
 bool TRAINING_counterSetSelectionFunction(void);
@@ -179,8 +201,6 @@ uint8_t TRAINING_counterSetSelectionFunctionHelper(void) {
 
 
 uint8_t counterExercise = 0;
-uint8_t playerToken = 1;
-bool tokenTaken = false;
 /******************************** TRAINING MODE SELECTION ******************************/
 
 /********************************ESP NOW COMMUNICATION CODE ******************************/
@@ -225,6 +245,7 @@ struct __attribute__((packed)) dataPacketSettings {
   uint16_t training_stopTimeDuration;
   uint8_t training_partnerMode_P1Color;
   uint8_t training_partnerMode_P2Color;
+  uint8_t winnerPartner;
 };
 
 
@@ -243,8 +264,10 @@ transmissionState_en TransmisionStatus = DATARECEIVED_en;     //Transmision Stat
 
 dataPacketSettings packetSettings;
 
-dataPacketPartner partnerP1 = { 1, 0, 0 };
-dataPacketPartner partnerP2 = { 2, 0, 0 };
+dataPacketPartner partnerP1 = { 1, 3, 0 };
+dataPacketPartner partnerP2 = { 2, 2, 0 };
+uint8_t P1TOFtrigger = 0;
+uint8_t P2TOFtrigger = 0;
 
 void initReceiverAddress(void) {
 
@@ -336,20 +359,20 @@ void selectColorNextCycle(void) {
 
 uint8_t generateRandomColor(void) {
   randomSeed(millis());
-  uint8_t flag = 0;
+  uint8_t flagLocal = 0;
   uint8_t returnValue = 0;
   uint8_t randomColor = 0;
-  while (flag == 0) {
+  while (flagLocal == 0) {
     randomColor = random(training_nrOfColors);  //function is exclusive
 
     if (training_trainingType == TRAINING_ALLONALLOFF) {
       if (randomColor != trainingAllOnAllOfActiveColorIndex) {  //BLUE is the active LIGHT for ALLONALLOFF
         returnValue = randomColor;
-        flag = 1;
+        flagLocal = 1;
       }
     } else {
       returnValue = randomColor;
-      flag = 1;
+      flagLocal = 1;
     }
   }
   return returnValue;
@@ -402,6 +425,10 @@ void readBatValue(void) {
   if (bat_percentage <= 0) {
     bat_percentage = 1;
   }
+
+  Serial.print("battery perc");
+  Serial.println(bat_percentage);
+  
 };
 
 void showBatteryPercentage(void) {
@@ -479,13 +506,13 @@ VL6180xIdentification identification;
 VL6180x TOFsensor(VL6180X_ADDRESS);
 
 volatile bool intrerruptTOF = false;
-volatile int flag = 0;
+volatile int resTOFflag = 0;
 
 ICACHE_RAM_ATTR void handleInterruptTOF() {
 
   intrerruptTOF = true;
-  if (counterExercise >= training_counterValStop && training_startTraining_Flag == true) {
-    flag++;
+  if ((counterExercise >= training_counterValStop && training_startTraining_Flag == true) || (packetSettings.winnerPartner != 0)) {
+    resTOFflag++;
   }
 }
 
@@ -494,17 +521,19 @@ void initTOFSensor(void) {
   pinMode(TOF_INT, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(TOF_INT), handleInterruptTOF, FALLING);
 
-  delay(500);  //do i really need this here
-  while (TOFsensor.VL6180xInit() == VL6180x_FAILURE_RESET) {
-    Serial.println("FAILED TO INITALIZE");  //Initialize device and check for errors
+  delay(100);  //do i really need this here
+   while(TOFsensor.VL6180xInit() == VL6180x_FAILURE_RESET){
+    Serial.println("FAILED TO INITALIZE"); //Initialize device and check for errors
+    ESP.restart();
   }
+  delay(500);
   TOFsensor.VL6180xDefautSettings();                         //Load default settings to get started.
   delay(500);                                                //do i really need this here
   /*replaceValueHere*/ TOFsensor.VL6180xSetDistInt(20, 20);  //it detects a movement when it lower than 2cm. With the current initialization should work for values up until 20cm .
   TOFsensor.getDistanceContinously();
   TOFsensor.VL6180xClearInterrupt();
   intrerruptTOF = false;
-  delay(500);  //do i really need this here
+  //delay(500);  //do i really need this here
 }
 /******************************** TOF SENSOR CODE  ******************************/
 
@@ -524,6 +553,10 @@ uint8_t randomECUselectPartner(void) {
       returnValue = randomNumber;
     }
   }
+  Serial.print("P1Active:");
+  Serial.println(partnerP1.activeECU);
+  Serial.print("P2Active:");
+  Serial.println(partnerP2.activeECU);
   return returnValue;
 }
 
@@ -560,26 +593,28 @@ void dataReceived(uint8_t *senderMac, uint8_t *data, uint8_t dataLength) {
     case 3:
 
       if (data[0] == 1) {
-        Serial.println("P1");
         memcpy(&partnerP1, data, sizeof(partnerP1));
         randomECUSelectionPartnerP1 = randomECUselectPartner();
         partnerP1.activeECU = randomECUSelectionPartnerP1;
-        Serial.print("randomP1");
+        Serial.print("randomP1 ");
         Serial.println(randomECUSelectionPartnerP1);
-        dataP1received=1;
+        dataP1received = 1;
       } else {
         if (data[0] == 2) {
-          Serial.println("P2");
           memcpy(&partnerP2, data, sizeof(partnerP2));
           randomECUSelectionPartnerP2 = randomECUselectPartner();
           partnerP2.activeECU = randomECUSelectionPartnerP2;
-          Serial.print("randomP2");
+          Serial.print("randomP2 ");
           Serial.println(randomECUSelectionPartnerP2);
-          dataP2received=1;
+          dataP2received = 1;
         }
       }
+      Serial.print("trigerP1 :");
+      Serial.println(P1TOFtrigger);
+      Serial.print("trigerP2 :");
+      Serial.println(P2TOFtrigger);
       break;
-    case 8:
+    case 9:
       memcpy(&packetSettings, data, sizeof(packetSettings));
       break;
   }
@@ -602,55 +637,72 @@ uint8_t randomECUselect(void) {
   return returnValue;
 }
 
-
-
-
 void selectECU_number(uint8_t ECU) {
   memcpy(&receiverECU_Address, receiverArray[ECU], MACADDRESSSIZE);
   packetAlone.LED_Token = ECU;
   TransmisionStatus = SENDDATA_en;
 }
 
-void endOfTrainingLight(void) {
-  for (int i = 0; i < RGBLEDNUM; i++) {
-    pixels.setPixelColor(i, pixels.Color(50, 0, 0));
-    pixels.show();
-    i = i + 3;
-  }
-  delay(200);
-  pixels.clear();
-  pixels.show();
-  delay(200);
-  for (int i = 1; i < RGBLEDNUM; i++) {
-    pixels.setPixelColor(i, pixels.Color(0, 50, 0));
-    pixels.show();
-    i = i + 3;
-  }
-  delay(200);
-  pixels.clear();
-  pixels.show();
-  delay(200);
-  for (int i = 2; i < RGBLEDNUM; i++) {
-    pixels.setPixelColor(i, pixels.Color(0, 0, 50));
-    pixels.show();
-    i = i + 3;
-  }
-  delay(200);
-  pixels.clear();
-  pixels.show();
-  delay(200);
+void endOfTrainingLightPartner(void) {
 
+  if (packetSettings.winnerPartner == 1) {
+    setRGBcolors(packetSettings.training_partnerMode_P1Color);
+    delay(500);
+    pixels.clear();
+    pixels.show();
+    delay(500);
+  } else {
+    setRGBcolors(packetSettings.training_partnerMode_P2Color);
+    delay(500);
+    pixels.clear();
+    pixels.show();
+    delay(500);
+  }
+  if (buttonLongPush()) {
+    if (intrerruptTOF) {
+      Serial.print("StartNewTraining");
+      startOfNewTraining();
+    } else {
+      intrerruptTOF = false;
+      TOFsensor.VL6180xClearInterrupt();
+    }
+  }
   if (intrerruptTOF) {
-    Serial.print("Flag:");
-    Serial.println(flag);
+    delay(300);
     intrerruptTOF = false;
     TOFsensor.VL6180xClearInterrupt();
+    Serial.print("Flag endOfTrainingLightPartner:");
+    Serial.println(resTOFflag);
+    if (resTOFflag > 5) {
+      restartTrainingMode();
+    }
+  }
+}
+void endOfTrainingLight(void) {
+  setRGBcolors(0);
+  delay(500);
+  pixels.clear();
+  pixels.show();
+  delay(500);
+
+  if (intrerruptTOF) {
+    delay(300);
+    intrerruptTOF = false;
+    TOFsensor.VL6180xClearInterrupt();
+    Serial.print("Flag endOfTrainingLight:");
+    Serial.println(resTOFflag);
+    if (resTOFflag > 5) {
+      restartTrainingModeSingle();
+    }
   }
 }
 
 void startOfNewTraining(void) {
+  ESP.restart();
+}
 
-  unsigned long start = millis();
+void restartTrainingModeSingle(void) {
+   unsigned long start = millis();
   while (millis() - start < 3000) {
 
     Serial.print("Broadcast");
@@ -672,8 +724,27 @@ void startOfNewTraining(void) {
     TransmisionStatus = DATARECEIVED_en;
     packetAlone.LED_Token = MY_ECU;
     counterExercise = 0;
-    flag = 0;
+    resTOFflag = 0;
   }
+}
+
+void restartTrainingMode(void) {
+  training_allSettingsSent=false;
+  resTOFflag = 0;
+  dataP2received=0;
+  dataP1received=0;
+  partnerP1.counterExercisePartner=0;
+  partnerP2.counterExercisePartner=0;
+   partnerP1 = { 1, 3, 0 };
+   partnerP2 = { 2, 2, 0 };
+  packetSettings.winnerPartner = 0;
+  counterExercise=0;
+  clearRGBcolors();
+  training_trainingType=TRAINING_PARTNERMODE;
+  TransmisionStatus = DATARECEIVED_en;
+  sendSettingsData();
+  
+
 }
 
 void endOfTrainingCounter(void) {
@@ -719,7 +790,6 @@ void endOfTrainingCounter(void) {
     pixels.show();
   }
 }
-
 
 void startOptionSelection(void) {
   tipeOfTraining_en lModeSelect;
@@ -894,15 +964,20 @@ void startOptionSelection(void) {
 }
 
 void sendSettingsData(void) {
-  packetSettings.training_NrOfEcus = training_SelectNrOfECUs;
-  packetSettings.training_counterValStop = training_counterValStop;
-  packetSettings.training_stopTimeDuration = training_stopTimeDuration;
-  packetSettings.training_nrOfColors = training_nrOfColors;
-  packetSettings.training_partnerMode_P1Color = training_partnerMode_P1Color;
-  packetSettings.training_partnerMode_P2Color = training_partnerMode_P2Color;
-  packetSettings.training_trainingType = training_trainingType;
-  initReceiverAddress();
+  if (TransmisionStatus != SENDINGDATA_en) {
+    packetSettings.training_NrOfEcus = training_SelectNrOfECUs;
+    packetSettings.training_counterValStop = training_counterValStop;
+    packetSettings.training_stopTimeDuration = training_stopTimeDuration;
+    packetSettings.training_nrOfColors = training_nrOfColors;
+    packetSettings.training_partnerMode_P1Color = training_partnerMode_P1Color;
+    packetSettings.training_partnerMode_P2Color = training_partnerMode_P2Color;
+    packetSettings.training_trainingType = training_trainingType;
+    initReceiverAddress();
+    Serial.println("datawriten");
+  }
+
   if ((TransmisionStatus == TRANSMISIONSUCCESFULL_en) || (TransmisionStatus == DATARECEIVED_en)) {
+    Serial.println("datasending");
     esp_now_send(NULL, (uint8_t *)&packetSettings, sizeof(packetSettings));
     TransmisionStatus = SENDINGDATA_en;
   }
@@ -925,12 +1000,11 @@ void sendSettingsData(void) {
 
 void setup() {
   Serial.begin(115200);          // initialize serial port
-  Wire.begin(SDA_PIN, SCL_PIN);  //Initialize I2C for VL6180x (TOF Sensor)
+ // Wire.begin(SDA_PIN, SCL_PIN);  //Initialize I2C for VL6180x (TOF Sensor)
   pinMode(BATMEAS, INPUT);       //measure Battery Pin
 
   pinMode(SELBUTTON, INPUT);
   attachInterrupt(digitalPinToInterrupt(SELBUTTON), handleInterruptSEL, FALLING);
-
 
   Serial.println("pixels");
   pixels.begin();  // INITIALIZE NeoPixel strip object (REQUIRED)
@@ -945,8 +1019,7 @@ void setup() {
   initBatteryCheck();
   Serial.println("almost Ready");
   delay(1000);
-  clearRGBcolors();
-
+  //clearRGBcolors();
   Serial.println("Ready");
 }
 
@@ -973,7 +1046,12 @@ void loop() {
           break;
 
         case TRAINING_PARTNERMODE:
-          trainingPartnerModeMain();
+          if (packetSettings.winnerPartner == 0) {
+            trainingPartnerModeMain();
+          } else {
+            training_trainingType = TRAINING_START;
+            training_allSettingsSent = false;
+          }
           break;
 
         case TRAINING_PARTNERMODERACE:
@@ -982,6 +1060,14 @@ void loop() {
 
         case TRAINING_COUNTERMODE:
           trainingCounterModeMain();
+          break;
+
+        case TRAINING_START:
+          if (training_allSettingsSent == false) {
+            sendSettingsData();
+          } else {
+            endOfTrainingLightPartner();
+          }
           break;
       }
     }
@@ -1041,16 +1127,7 @@ void trainingSimpleMain(void) {
     }
 
   } else {
-    Serial.print("counterExercise: ");
-    Serial.println(counterExercise);
-    Serial.print("training_counterValStopFlag: ");
-    Serial.println(counterExercise);
-    if (flag < 5) {
-      endOfTrainingLight();
-    } else {
-      startOfNewTraining();
-      Serial.print("Reset");
-    }
+    endOfTrainingLight();
   }
 }
 
@@ -1124,12 +1201,8 @@ void trainingAllOnAllOffMain(void) {
     }
 
   } else {
-    if (flag < 5) {
-      endOfTrainingLight();
-    } else {
-      startOfNewTraining();
-      Serial.print("Reset");
-    }
+
+    endOfTrainingLight();
   }
 }
 
@@ -1184,38 +1257,53 @@ void trainingReturnToMasterMain(void) {
     }
 
   } else {
-    if (flag < 5) {
-      endOfTrainingLight();
-    } else {
-      startOfNewTraining();
-      Serial.print("Reset");
-    }
+
+    endOfTrainingLight();
   }
 }
 
 void trainingPartnerModeMain(void) {
 
-  if (partnerP1.activeECU == 1) {
-    TRAINING_PARTNERMODE_player1Loop();
-  } else {
-    if (partnerP1.activeECU == 0) {
-      //do nothing
-    } else {
-      TRAINING_PARTNERMODE_SendToActiveP1();
+  if (dataP1received == 1 || dataP2received == 1) {
+    if (dataP1received == 1) {
+      if (partnerP1.activeECU == 1) {
+        TRAINING_PARTNERMODE_player1Loop();
+      } else {
+        if (partnerP1.activeECU == 0) {
+          //do nothing
+        } else {
+          if (partnerP1.counterExercisePartner < packetSettings.training_counterValStop) {
+            TRAINING_PARTNERMODE_SendToActiveP1();
+          } else {
+            packetSettings.winnerPartner = 1;
+          }
+        }
+      }
     }
-  }
 
-  if (partnerP2.activeECU == 1) {
-    TRAINING_PARTNERMODE_player2Loop();
-  } else {
-    if (partnerP2.activeECU == 0) {
-      //do nothing
-    } else {
-      TRAINING_PARTNERMODE_SendToActiveP2();
+    if (dataP2received == 1) {
+      if (partnerP2.activeECU == 1) {
+        TRAINING_PARTNERMODE_player2Loop();
+      } else {
+        if (partnerP2.activeECU == 0) {
+          //do nothing
+        } else {
+          if (partnerP2.counterExercisePartner < packetSettings.training_counterValStop) {
+            TRAINING_PARTNERMODE_SendToActiveP2();
+          } else {
+            packetSettings.winnerPartner = 2;
+          }
+        }
+      }
     }
+
+  } else {
+    TransmisionStatus = ONLYRECEIVE_en;
+    intrerruptTOF = false;
+    TOFsensor.VL6180xClearInterrupt();
+    clearRGBcolors();
   }
 }
-
 void trainingPartnerModeRaceMain(void) {
   //add control Code
 }
@@ -1269,21 +1357,24 @@ void TRAINING_PARTNERMODE_player1Loop(void) {
     //Is the sensor active and the ECU is valid ?
     if (intrerruptTOF) {
       selectColor = generateRandomColor();
-      Serial.println("Intrerupt received p1");
+      Serial.print("Intrerupt received p1");
       intrerruptTOF = false;
       randomECUSelectionPartnerP1 = randomECUselectPartner();
       selectECU_number(randomECUSelectionPartnerP1);
+      Serial.println(randomECUSelectionPartnerP1);
+      partnerP1.activeECU = randomECUSelectionPartnerP1;
       clearRGBcolors();
       TOFsensor.VL6180xClearInterrupt();
       partnerP1.counterExercisePartner++;
-      TransmisionStatus = SENDDATA_en;
+      P1TOFtrigger = 1;
     }
-    if (TransmisionStatus == SENDDATA_en) {
-     // char macStr[18];
-      // snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x", receiverECU_Address[0], receiverECU_Address[1], receiverECU_Address[2], receiverECU_Address[3], receiverECU_Address[4], receiverECU_Address[5]);
-      //Serial.print("p1 sending to:");
-      // Serial.println(macStr);
+    if (TransmisionStatus == SENDDATA_en && P1TOFtrigger == 1) {
+      char macStr[18];
+      snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x", receiverECU_Address[0], receiverECU_Address[1], receiverECU_Address[2], receiverECU_Address[3], receiverECU_Address[4], receiverECU_Address[5]);
+      Serial.print("p1 sending to:");
+      Serial.println(macStr);
       esp_now_send(receiverECU_Address, (uint8_t *)&partnerP1, sizeof(partnerP1));
+      P1TOFtrigger = 0;
       TransmisionStatus = SENDINGDATA_en;
     } else {
       if (TransmisionStatus == TRANSMISIONSUCCESFULL_en) {
@@ -1293,15 +1384,11 @@ void TRAINING_PARTNERMODE_player1Loop(void) {
         intrerruptTOF = false;
         TOFsensor.VL6180xClearInterrupt();
         clearRGBcolors();
+        dataP1received = 0;
       }
     }
   } else {
-    if (flag < 5) {
-      endOfTrainingLight();
-    } else {
-      startOfNewTraining();
-      Serial.print("Reset");
-    }
+    packetSettings.winnerPartner = 1;
   }
 }
 
@@ -1311,23 +1398,25 @@ void TRAINING_PARTNERMODE_player2Loop(void) {
     //Is the sensor active and the ECU is valid ?
     if (intrerruptTOF) {
       selectColor = generateRandomColor();
-      Serial.println("Intrerupt received p2");
+      Serial.print("Intrerupt received p2 :");
       intrerruptTOF = false;
       randomECUSelectionPartnerP2 = randomECUselectPartner();
       selectECU_number(randomECUSelectionPartnerP2);
-      //delay(RGBCLEARDELAY);  //why did i used this ???
+      Serial.println(randomECUSelectionPartnerP2);
+      partnerP2.activeECU = randomECUSelectionPartnerP2;
       clearRGBcolors();
       TOFsensor.VL6180xClearInterrupt();
       partnerP2.counterExercisePartner++;
-      TransmisionStatus = SENDDATA_en;
+      P2TOFtrigger = 1;
     }
-    if (TransmisionStatus == SENDDATA_en) {
+    if (TransmisionStatus == SENDDATA_en && P2TOFtrigger == 1) {
       char macStr[18];
       snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x", receiverECU_Address[0], receiverECU_Address[1], receiverECU_Address[2], receiverECU_Address[3], receiverECU_Address[4], receiverECU_Address[5]);
       Serial.print("p2 sending to :");
       Serial.println(macStr);
       esp_now_send(receiverECU_Address, (uint8_t *)&partnerP2, sizeof(partnerP2));
       TransmisionStatus = SENDINGDATA_en;
+      P2TOFtrigger = 0;
     } else {
       if (TransmisionStatus == TRANSMISIONSUCCESFULL_en) {
 
@@ -1336,26 +1425,18 @@ void TRAINING_PARTNERMODE_player2Loop(void) {
         intrerruptTOF = false;
         TOFsensor.VL6180xClearInterrupt();
         clearRGBcolors();
+        dataP2received = 0;
       }
     }
   } else {
-    if (flag < 5) {
-      endOfTrainingLight();
-    } else {
-      startOfNewTraining();
-      Serial.print("Reset");
-    }
+    packetSettings.winnerPartner = 2;
   }
 }
 
 void TRAINING_PARTNERMODE_SendToActiveP1(void) {
-  if(dataP1received)
-  {
-    TransmisionStatus=SENDDATA_en;
-    dataP1received=0;
-    Serial.print("p1 reset receice flag");
-  
-  selectECU_number(randomECUSelectionPartnerP1);
+
+  Serial.println("p1 reset receice flag");
+
   if (TransmisionStatus == SENDDATA_en) {
     char macStr[18];
     snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x", receiverECU_Address[0], receiverECU_Address[1], receiverECU_Address[2], receiverECU_Address[3], receiverECU_Address[4], receiverECU_Address[5]);
@@ -1370,20 +1451,20 @@ void TRAINING_PARTNERMODE_SendToActiveP1(void) {
       TransmisionStatus = ONLYRECEIVE_en;
       intrerruptTOF = false;
       TOFsensor.VL6180xClearInterrupt();
-      partnerP1.activeECU = 0;
+      dataP1received = 0;
     }
   }
+  if (TransmisionStatus == SENDINGDATA_en || TransmisionStatus == TRANSMISIONSUCCESFULL_en) {
+
+  } else {
+    selectECU_number(randomECUSelectionPartnerP1);
   }
 }
 
 void TRAINING_PARTNERMODE_SendToActiveP2(void) {
-   if(dataP2received)
-  {
-    TransmisionStatus = SENDDATA_en;
-    dataP2received=0;
-    Serial.print("p2 reset receice flag");
-  
-  selectECU_number(randomECUSelectionPartnerP2);
+
+  Serial.println("p2 reset receice flag");
+
   if (TransmisionStatus == SENDDATA_en) {
     char macStr[18];
     snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x", receiverECU_Address[0], receiverECU_Address[1], receiverECU_Address[2], receiverECU_Address[3], receiverECU_Address[4], receiverECU_Address[5]);
@@ -1398,9 +1479,13 @@ void TRAINING_PARTNERMODE_SendToActiveP2(void) {
       TransmisionStatus = ONLYRECEIVE_en;
       intrerruptTOF = false;
       TOFsensor.VL6180xClearInterrupt();
-      partnerP2.activeECU = 0;
+      dataP2received = 0;
     }
   }
+  if (TransmisionStatus == SENDINGDATA_en || TransmisionStatus == TRANSMISIONSUCCESFULL_en) {
+
+  } else {
+    selectECU_number(randomECUSelectionPartnerP2);
   }
 }
 
@@ -1549,8 +1634,8 @@ bool TRAINING_selectColor_P1(void) {
       interruptModeSelection = 0;
       intrerruptTOF = false;
       TOFsensor.VL6180xClearInterrupt();
-      Serial.print("training_nrOfColors:");
-      Serial.println(training_nrOfColors);
+      Serial.print("P1:");
+      Serial.println(training_partnerMode_P1Color);
       clearRGBcolors();
       lreturn = true;
     }
@@ -1578,8 +1663,8 @@ bool TRAINING_selectColor_P2(void) {
       interruptModeSelection = 0;
       intrerruptTOF = false;
       TOFsensor.VL6180xClearInterrupt();
-      Serial.print("training_nrOfColors:");
-      Serial.println(training_nrOfColors);
+      Serial.print("P2:");
+      Serial.println(training_partnerMode_P2Color);
       clearRGBcolors();
       lreturn = true;
     }

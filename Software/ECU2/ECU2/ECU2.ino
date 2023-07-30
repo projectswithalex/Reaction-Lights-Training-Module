@@ -49,9 +49,11 @@ void trainingPartnerModeRaceMain(void);
 
 bool settingsReceivedFlag = false;
 uint8_t counterExercise = 0;
+uint8_t startOfNewTrainingCounter = 0;
 /******************************** TRAINING MODE SELECTION ******************************/
 
 /********************************ESP NOW COMMUNICATION CODE ******************************/
+#define NEWTRAININGMAXTIME 4
 #define MY_ROLE ESP_NOW_ROLE_COMBO        // set the role of this device: CONTROLLER, SLAVE, COMBO
 #define RECEIVER_ROLE ESP_NOW_ROLE_COMBO  // set the role of the receiver
 /*replaceValueHere*/ #define MY_ECU 2     //ECU number
@@ -93,6 +95,7 @@ struct __attribute__((packed)) dataPacketSettings {
   uint16_t training_stopTimeDuration;
   uint8_t training_partnerMode_P1Color;
   uint8_t training_partnerMode_P2Color;
+  uint8_t winnerPartner;
 };
 
 
@@ -194,19 +197,19 @@ void selectColorNextCycle(void) {
 
 uint8_t generateRandomColor(void) {
   randomSeed(millis());
-  uint8_t flag = 0;
+  uint8_t flaglocal = 0;
   uint8_t returnValue = 0;
   uint8_t randomColor = 0;
-  while (flag == 0) {
+  while (flaglocal == 0) {
     randomColor = random(packetSettings.training_nrOfColors);
 
     if (packetSettings.training_trainingType == TRAINING_ALLONALLOFF) {
       if (randomColor != trainingAllOnAllOfActiveColorIndex) {  //BLUE is the active LIGHT for ALLONALLOFF
         returnValue = randomColor;
-        flag = 1;
+        flaglocal = 1;
       }
     } else {
-      flag = 1;
+      flaglocal = 1;
       returnValue = randomColor;
     }
   }
@@ -337,32 +340,34 @@ VL6180xIdentification identification;
 VL6180x TOFsensor(VL6180X_ADDRESS);
 
 volatile bool intrerruptTOF = false;
-volatile int flag = 0;
+volatile int resTOFflag = 0;
 
 ICACHE_RAM_ATTR void handleInterruptTOF() {
 
   intrerruptTOF = true;
   if (counterExercise >= packetSettings.training_counterValStop) {
-    flag++;
+    resTOFflag++;
   }
 }
 
 
 void initTOFSensor(void) {
   pinMode(TOF_INT, INPUT_PULLUP);
+
   attachInterrupt(digitalPinToInterrupt(TOF_INT), handleInterruptTOF, FALLING);
 
   delay(500);  //do i really need this here
   while (TOFsensor.VL6180xInit() == VL6180x_FAILURE_RESET) {
     Serial.println("FAILED TO INITALIZE");  //Initialize device and check for errors
   }
+  delay(500);  
   TOFsensor.VL6180xDefautSettings();                         //Load default settings to get started.
-  delay(500);                                                //do i really need this here
+  delay(500);                                               //do i really need this here
   /*replaceValueHere*/ TOFsensor.VL6180xSetDistInt(20, 20);  //it detects a movement when it lower than 2cm. With the current initialization should work for values up until 20cm .
   TOFsensor.getDistanceContinously();
   TOFsensor.VL6180xClearInterrupt();
   intrerruptTOF = false;
-  delay(500);  //do i really need this here
+  //delay(500);  //do i really need this here
 }
 /******************************** TOF SENSOR CODE  ******************************/
 
@@ -399,8 +404,8 @@ void dataReceived(uint8_t *senderMac, uint8_t *data, uint8_t dataLength) {
       Serial.println("local");
       memcpy(&partnerLocal, data, sizeof(partnerLocal));
       break;
-      
-    case 8:
+
+    case 9:
       memcpy(&packetSettings, data, sizeof(packetSettings));
       settingsReceivedFlag = false;
       break;
@@ -432,44 +437,46 @@ void selectECU_number(uint8_t ECU) {
   TransmisionStatus = SENDDATA_en;
 }
 
-void endOfTrainingLight(void) {
-  for (int i = 0; i < RGBLEDNUM; i++) {
-    pixels.setPixelColor(i, pixels.Color(50, 0, 0));
+void endOfTrainingLightPartner(void) {
+  if (packetSettings.winnerPartner == 1) {
+    setRGBcolors(packetSettings.training_partnerMode_P1Color);
+    delay(500);
+    pixels.clear();
     pixels.show();
-    i = i + 3;
-  }
-  delay(200);
-  pixels.clear();
-  pixels.show();
-  delay(200);
-  for (int i = 1; i < RGBLEDNUM; i++) {
-    pixels.setPixelColor(i, pixels.Color(0, 50, 0));
+    delay(500);
+  } else {
+    setRGBcolors(packetSettings.training_partnerMode_P2Color);
+    delay(500);
+    pixels.clear();
     pixels.show();
-    i = i + 3;
+    delay(500);
   }
-  delay(200);
-  pixels.clear();
-  pixels.show();
-  delay(200);
-  for (int i = 2; i < RGBLEDNUM; i++) {
-    pixels.setPixelColor(i, pixels.Color(0, 0, 50));
-    pixels.show();
-    i = i + 3;
-  }
-  delay(200);
-  pixels.clear();
-  pixels.show();
-  delay(200);
-
-  if (intrerruptTOF) {
-    Serial.print("Flag:");
-    Serial.println(flag);
-    intrerruptTOF = false;
-    TOFsensor.VL6180xClearInterrupt();
+  startOfNewTrainingCounter++;
+  if (startOfNewTrainingCounter > NEWTRAININGMAXTIME) {
+    ESP.restart();
   }
 }
 
-void startOfNewTraining(void) {
+void endOfTrainingLight(void) {
+   setRGBcolors(0);
+  delay(500);
+  pixels.clear();
+  pixels.show();
+  delay(500);
+
+  if (intrerruptTOF) {
+    delay(300);
+    intrerruptTOF = false;
+    TOFsensor.VL6180xClearInterrupt();
+    Serial.print("Flag endOfTrainingLight:");
+    Serial.println(resTOFflag);
+    if (resTOFflag > 5) {
+      restartTrainingModeSingle();
+    }
+  }
+}
+
+void restartTrainingModeSingle(void) {
 
   unsigned long start = millis();
   while (millis() - start < 3000) {
@@ -493,7 +500,7 @@ void startOfNewTraining(void) {
     TransmisionStatus = DATARECEIVED_en;
     packetAlone.LED_Token = MY_ECU;
     counterExercise = 0;
-    flag = 0;
+    resTOFflag = 0;
   }
 }
 
@@ -535,6 +542,8 @@ void loop() {
     initReceiverAddress();
     clearRGBcolors();
     settingsReceivedFlag = true;
+    TOFsensor.VL6180xClearInterrupt();
+    intrerruptTOF = false;
   }
 
   switch (packetSettings.training_trainingType) {
@@ -556,6 +565,12 @@ void loop() {
 
     case TRAINING_PARTNERMODERACE:
       trainingPartnerModeRaceMain();
+      break;
+
+    case TRAINING_START:
+      if (packetSettings.training_NrOfEcus != 0) {
+        endOfTrainingLightPartner();
+      }
       break;
   }
 }
@@ -615,12 +630,9 @@ void trainingSimpleMain(void) {
     }
 
   } else {
-    if (flag < 5) {
+
       endOfTrainingLight();
-    } else {
-      startOfNewTraining();
-      Serial.print("Reset");
-    }
+
   }
 }
 
@@ -688,12 +700,7 @@ void trainingAllOnAllOffMain(void) {
     }
 
   } else {
-    if (flag < 5) {
       endOfTrainingLight();
-    } else {
-      startOfNewTraining();
-      Serial.print("Reset");
-    }
   }
 }
 
@@ -748,28 +755,20 @@ void trainingReturnToMasterMain(void) {
     }
 
   } else {
-    if (flag < 5) {
       endOfTrainingLight();
-    } else {
-      startOfNewTraining();
-      Serial.print("Reset");
-    }
   }
 }
 
 void trainingPartnerModeMain(void) {
   if (partnerLocal.activeECU == MY_ECU) {
-
-    if (partnerLocal.LED_Token_Partner == 1) 
-    {
+    if (partnerLocal.LED_Token_Partner == 1) {
       setRGBcolors(packetSettings.training_partnerMode_P1Color);
-    }
-      else {
-        if (partnerLocal.LED_Token_Partner == 2) {
-          setRGBcolors(packetSettings.training_partnerMode_P2Color);
-        }
+    } else {
+      if (partnerLocal.LED_Token_Partner == 2) {
+        setRGBcolors(packetSettings.training_partnerMode_P2Color);
       }
-    
+    }
+
 
     //Is the sensor active and the ECU is valid ?
     if (intrerruptTOF) {
