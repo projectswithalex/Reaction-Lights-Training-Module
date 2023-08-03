@@ -428,7 +428,6 @@ void readBatValue(void) {
 
   Serial.print("battery perc");
   Serial.println(bat_percentage);
-  
 };
 
 void showBatteryPercentage(void) {
@@ -522,8 +521,8 @@ void initTOFSensor(void) {
   attachInterrupt(digitalPinToInterrupt(TOF_INT), handleInterruptTOF, FALLING);
 
   delay(100);  //do i really need this here
-   while(TOFsensor.VL6180xInit() == VL6180x_FAILURE_RESET){
-    Serial.println("FAILED TO INITALIZE"); //Initialize device and check for errors
+  while (TOFsensor.VL6180xInit() == VL6180x_FAILURE_RESET) {
+    Serial.println("FAILED TO INITALIZE");  //Initialize device and check for errors
     ESP.restart();
   }
   delay(500);
@@ -702,7 +701,7 @@ void startOfNewTraining(void) {
 }
 
 void restartTrainingModeSingle(void) {
-   unsigned long start = millis();
+  unsigned long start = millis();
   while (millis() - start < 3000) {
 
     Serial.print("Broadcast");
@@ -729,22 +728,20 @@ void restartTrainingModeSingle(void) {
 }
 
 void restartTrainingMode(void) {
-  training_allSettingsSent=false;
+  training_allSettingsSent = false;
   resTOFflag = 0;
-  dataP2received=0;
-  dataP1received=0;
-  partnerP1.counterExercisePartner=0;
-  partnerP2.counterExercisePartner=0;
-   partnerP1 = { 1, 3, 0 };
-   partnerP2 = { 2, 2, 0 };
+  dataP2received = 0;
+  dataP1received = 0;
+  partnerP1.counterExercisePartner = 0;
+  partnerP2.counterExercisePartner = 0;
+  partnerP1 = { 1, 3, 0 };
+  partnerP2 = { 2, 2, 0 };
   packetSettings.winnerPartner = 0;
-  counterExercise=0;
+  counterExercise = 0;
   clearRGBcolors();
-  training_trainingType=TRAINING_PARTNERMODE;
+  training_trainingType = TRAINING_PARTNERMODE;
   TransmisionStatus = DATARECEIVED_en;
   sendSettingsData();
-  
-
 }
 
 void endOfTrainingCounter(void) {
@@ -999,9 +996,9 @@ void sendSettingsData(void) {
 /******************************** Logic CODE  ******************************/
 
 void setup() {
-  Serial.begin(115200);          // initialize serial port
- // Wire.begin(SDA_PIN, SCL_PIN);  //Initialize I2C for VL6180x (TOF Sensor)
-  pinMode(BATMEAS, INPUT);       //measure Battery Pin
+  Serial.begin(115200);     // initialize serial port
+                            // Wire.begin(SDA_PIN, SCL_PIN);  //Initialize I2C for VL6180x (TOF Sensor)
+  pinMode(BATMEAS, INPUT);  //measure Battery Pin
 
   pinMode(SELBUTTON, INPUT);
   attachInterrupt(digitalPinToInterrupt(SELBUTTON), handleInterruptSEL, FALLING);
@@ -1627,6 +1624,7 @@ bool TRAINING_selectColor_P1(void) {
     if (setColor > NUMBEROFCOLORS - 1) {
       interruptModeSelection = 1;
     }
+
     setRGBcolors(interruptModeSelection);
     if (intrerruptTOF == true && setColor != 0) {
       training_partnerMode_P1Color = setColor;
@@ -1653,9 +1651,15 @@ bool TRAINING_selectColor_P2(void) {
       intrerruptTOF = false;
       TOFsensor.VL6180xClearInterrupt();
     }
+    if (setColor == training_partnerMode_P1Color) {
+      setColor++;
+      interruptModeSelection++;
+    }
     if (setColor > NUMBEROFCOLORS - 1) {
       interruptModeSelection = 1;
     }
+
+
     setRGBcolors(interruptModeSelection);
     if (intrerruptTOF == true && setColor != 0) {
       training_partnerMode_P2Color = setColor;
