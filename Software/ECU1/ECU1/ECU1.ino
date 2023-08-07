@@ -746,32 +746,16 @@ void restartTrainingMode(void) {
 
 void endOfTrainingCounter(void) {
   uint16_t distanceVal = 0;
-  for (int i = 0; i < RGBLEDNUM; i++) {
-    pixels.setPixelColor(i, pixels.Color(0, 0, 150));
-    pixels.show();
-  }
-  delay(100);
+  setRGBcolors(0);
+  delay(500);
   pixels.clear();
   pixels.show();
-  for (int i = 0; i < RGBLEDNUM; i++) {
-    pixels.setPixelColor(i, pixels.Color(150, 0, 0));
-    pixels.show();
-  }
-  delay(100);
-  pixels.clear();
-  pixels.show();
-  for (int i = 0; i < RGBLEDNUM; i++) {
-    pixels.setPixelColor(i, pixels.Color(100, 100, 100));
-    pixels.show();
-  }
-  delay(100);
-  pixels.clear();
-  pixels.show();
+  delay(500);
   distanceVal = sensor.readRangeSingleMillimeters();
   if (distanceVal < 100) {
     TRAINING_COUNTERMODE_restartCounterTraining++;
   }
-  if (TRAINING_COUNTERMODE_restartCounterTraining > 10) {
+  if (TRAINING_COUNTERMODE_restartCounterTraining > 5) {
     TRAINING_COUNTERMODE_restartCounterTraining = 0;
     TRAINING_COUNTERMODE_pushUpCounter = 0;
     pixels.clear();
@@ -1026,7 +1010,7 @@ void loop() {
   if (training_startTraining_Flag == false) {
     startOptionSelection();
   } else {
-    if (training_allSettingsSent == false) {
+    if ((training_allSettingsSent == false) && (training_trainingType!=TRAINING_COUNTERMODE)) {
       sendSettingsData();
     } else {
       switch (training_trainingType) {
