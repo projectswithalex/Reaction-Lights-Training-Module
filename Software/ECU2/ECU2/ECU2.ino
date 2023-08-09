@@ -104,6 +104,8 @@ struct __attribute__((packed)) dataPacketSettings {
   uint16_t training_stopTimeDuration;
   uint8_t training_partnerMode_P1Color;
   uint8_t training_partnerMode_P2Color;
+  uint32_t training_maxIntervalTime;
+  uint32_t training_minIntervalTime;
   uint8_t winnerPartner;
 };
 
@@ -406,6 +408,10 @@ void dataReceived(uint8_t *senderMac, uint8_t *data, uint8_t dataLength) {
 
   switch (dataLength) {
     case 2:
+      if(packetSettings.training_trainingType==TRAINING_TIMERMODE)
+      {
+        timer1_write(randomTimerInterval());
+      }
       memcpy(&packetAlone, data, sizeof(packetAlone));
       break;
 
@@ -414,7 +420,7 @@ void dataReceived(uint8_t *senderMac, uint8_t *data, uint8_t dataLength) {
       memcpy(&partnerLocal, data, sizeof(partnerLocal));
       break;
 
-    case 9:
+    case 17:
       memcpy(&packetSettings, data, sizeof(packetSettings));
       settingsReceivedFlag = false;
       break;
@@ -439,6 +445,19 @@ uint8_t randomECUselect(void) {
   }
   return returnValue;
 }
+
+uint32_t randomTimerInterval(void) {
+  randomSeed(millis());
+  uint8_t randomNumber = 0;
+  if (training_timerMode_minIntervalTimeFlag != training_timerMode_maxIntervalTimeFlag) {
+    randomNumber = random(training_timerMode_minIntervalTimeFlag, training_timerMode_maxIntervalTimeFlag);
+  } else {
+    randomNumber=training_timerMode_minIntervalTimeFlag;
+  }
+  return randomNumber;
+}
+
+
 
 void selectECU_number(uint8_t ECU) {
   memcpy(&receiverECU_Address, receiverArray[ECU], MACADDRESSSIZE);

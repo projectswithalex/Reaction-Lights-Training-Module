@@ -22,7 +22,6 @@ Disclaimer : Code is opensource and can be modified by everyone. If you can impr
 #include <espnow.h>
 #include <Wire.h>
 #include <VL6180X_WE.h>
-#include <VL6180X.h>
 
 
 /******************************** TRAINING MODE SELECTION ******************************/
@@ -34,7 +33,7 @@ enum tipeOfTraining_en {
   TRAINING_ALLONALLOFF,          //BLUE
   TRAINING_RETURNTOMASTER,       //YELLOW
   TRAINING_PARTNERMODE,          //AQUA
-  TRAINING_PARTNERMODERACE = 5,  //MAGENTA
+  TRAINING_TIMERMODE = 5,  //MAGENTA
   TRAINING_END = 5
 };
 bool training_startTraining_Flag = false;
@@ -45,11 +44,20 @@ uint8_t TRAINING_ALLONALLOFF_sendData = 0;
 uint8_t trainingAllOnAllOfActiveColorIndex = 0;  //red
 void trainingReturnToMasterMain(void);
 void trainingPartnerModeMain(void);
-void trainingPartnerModeRaceMain(void);
+void trainingTimerModeMain(void);
 
 bool settingsReceivedFlag = false;
 uint8_t counterExercise = 0;
 uint8_t startOfNewTrainingCounter = 0;
+
+
+volatile bool timerIntreruptFlag;
+
+ICACHE_RAM_ATTR void onTimerInt() {
+  timerIntreruptFlag = true;
+}
+
+
 /******************************** TRAINING MODE SELECTION ******************************/
 
 /********************************ESP NOW COMMUNICATION CODE ******************************/
@@ -516,6 +524,8 @@ void setup() {
   Wire.begin(SDA_PIN, SCL_PIN);  //Initialize I2C for VL6180x (TOF Sensor)
   pinMode(BATMEAS, INPUT);       //measure Battery Pin
 
+  timer1_attachInterrupt(onTimerInt); // Add ISR Function
+	timer1_enable(TIM_DIV256 , TIM_EDGE, TIM_SINGLE);
 
   Serial.println("pixels");
   pixels.begin();  // INITIALIZE NeoPixel strip object (REQUIRED)
@@ -566,8 +576,8 @@ void loop() {
       trainingPartnerModeMain();
       break;
 
-    case TRAINING_PARTNERMODERACE:
-      trainingPartnerModeRaceMain();
+    case TRAINING_TIMERMODE:
+      trainingTimerModeMain();
       break;
 
     case TRAINING_START:
@@ -802,6 +812,63 @@ void trainingPartnerModeMain(void) {
   }
 }
 
-void trainingPartnerModeRaceMain(void) {
-  //add control Code
+void trainingTimerModeMain(void) {
+  if (counterExercise < packetSettings.training_counterValStop) {
+    if (millis() - timeFlag > 500) {
+      randomECUSelection = randomECUselect();
+      timeFlag = millis();
+    }
+
+    if (packetAlone.LED_Token == MY_ECU) {
+      setRGBcolors(selectColor);
+      //Is the sensor active and the ECU is valid ?
+      if (timerIntreruptFlag) {
+        selectColor = generateRandomColor();
+        Serial.println("Intrerupt received");
+        timerIntreruptFlag=false;
+        intrerruptTOF = false;
+        selectECU_number(randomECUSelection);
+        //delay(RGBCLEARDELAY);  //why did i used this ???
+        clearRGBcolors();
+        TOFsensor.VL6180xClearInterrupt();
+        counterExercise = packetAlone.counterExerciseData;
+        counterExercise++;
+        packetAlone.counterExerciseData = counterExercise;
+        Serial.print("counter:");
+        Serial.println(counterExercise);
+
+      } else {
+        //do nothing but wait
+      }
+    } else {
+      if (TransmisionStatus == SENDDATA_en) {
+
+        char macStr[18];
+        snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x", receiverECU_Address[0], receiverECU_Address[1], receiverECU_Address[2], receiverECU_Address[3], receiverECU_Address[4], receiverECU_Address[5]);
+        // Serial.print("sending to:");
+        // Serial.println(macStr);
+        esp_now_send(receiverECU_Address, (uint8_t *)&packetAlone, sizeof(packetAlone));
+        TransmisionStatus = SENDINGDATA_en;
+      } else {
+        if (TransmisionStatus == TRANSMISIONSUCCESFULL_en) {
+
+          Serial.println("Transmision succesful");
+          TransmisionStatus = ONLYRECEIVE_en;
+          intrerruptTOF = false;
+          TOFsensor.VL6180xClearInterrupt();
+        } else {
+          if (TransmisionStatus == ONLYRECEIVE_en) {
+            intrerruptTOF = false;
+            clearRGBcolors();
+            TOFsensor.VL6180xClearInterrupt();
+          }
+        }
+      }
+    }
+
+  } else {
+
+      endOfTrainingLight();
+
+  }
 }
