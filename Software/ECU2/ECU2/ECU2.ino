@@ -30,11 +30,11 @@ Disclaimer : Code is opensource and can be modified by everyone. If you can impr
 
 enum tipeOfTraining_en {
   TRAINING_START = 0,
-  TRAINING_SIMPLE = 1,           //GREEN
-  TRAINING_ALLONALLOFF,          //BLUE
-  TRAINING_RETURNTOMASTER,       //YELLOW
-  TRAINING_PARTNERMODE,          //AQUA
-  TRAINING_TIMERMODE = 5,  //MAGENTA
+  TRAINING_SIMPLE = 1,      //GREEN
+  TRAINING_ALLONALLOFF,     //BLUE
+  TRAINING_RETURNTOMASTER,  //YELLOW
+  TRAINING_PARTNERMODE,     //AQUA
+  TRAINING_TIMERMODE = 5,   //MAGENTA
   TRAINING_END = 5
 };
 bool training_startTraining_Flag = false;
@@ -371,9 +371,9 @@ void initTOFSensor(void) {
   while (TOFsensor.VL6180xInit() == VL6180x_FAILURE_RESET) {
     Serial.println("FAILED TO INITALIZE");  //Initialize device and check for errors
   }
-  delay(500);  
+  delay(500);
   TOFsensor.VL6180xDefautSettings();                         //Load default settings to get started.
-  delay(500);                                               //do i really need this here
+  delay(500);                                                //do i really need this here
   /*replaceValueHere*/ TOFsensor.VL6180xSetDistInt(20, 20);  //it detects a movement when it lower than 2cm. With the current initialization should work for values up until 20cm .
   TOFsensor.getDistanceContinously();
   TOFsensor.VL6180xClearInterrupt();
@@ -408,11 +408,10 @@ void dataReceived(uint8_t *senderMac, uint8_t *data, uint8_t dataLength) {
 
   switch (dataLength) {
     case 2:
-      if(packetSettings.training_trainingType==TRAINING_TIMERMODE)
-      {
+      memcpy(&packetAlone, data, sizeof(packetAlone));
+      if(packetSettings.training_trainingType==TRAINING_TIMERMODE && packetAlone.LED_Token==MY_ECU) {
         timer1_write(randomTimerInterval());
       }
-      memcpy(&packetAlone, data, sizeof(packetAlone));
       break;
 
     case 3:
@@ -446,15 +445,30 @@ uint8_t randomECUselect(void) {
   return returnValue;
 }
 
+uint32_t randomTimerIntervalHelper(uint8_t value) {
+  uint32_t retVal=(uint32_t)value;
+  if (retVal > 2) {
+    retVal= retVal * 156250;  // 0.5s and 1sec
+    return retVal;
+  } else {
+    retVal= ((retVal - 1) * 312500);  // 2s, 3s, 4s, 5s
+    return retVal;
+  }
+}
+
 uint32_t randomTimerInterval(void) {
   randomSeed(millis());
   uint8_t randomNumber = 0;
-  if (training_timerMode_minIntervalTimeFlag != training_timerMode_maxIntervalTimeFlag) {
-    randomNumber = random(training_timerMode_minIntervalTimeFlag, training_timerMode_maxIntervalTimeFlag);
+  uint32_t retVal=0;
+  if (packetSettings.training_minIntervalTime != packetSettings.training_maxIntervalTime) {
+    randomNumber = random(packetSettings.training_minIntervalTime, packetSettings.training_maxIntervalTime);
   } else {
-    randomNumber=training_timerMode_minIntervalTimeFlag;
+    randomNumber = packetSettings.training_minIntervalTime;
   }
-  return randomNumber;
+  retVal=randomTimerIntervalHelper(randomNumber);
+  Serial.print("Timer 1 randomNumber :");
+  Serial.println(retVal);
+  return retVal;
 }
 
 
@@ -486,7 +500,7 @@ void endOfTrainingLightPartner(void) {
 }
 
 void endOfTrainingLight(void) {
-   setRGBcolors(0);
+  setRGBcolors(0);
   delay(500);
   pixels.clear();
   pixels.show();
@@ -530,6 +544,10 @@ void restartTrainingModeSingle(void) {
     counterExercise = 0;
     resTOFflag = 0;
   }
+   if(packetSettings.training_trainingType==TRAINING_TIMERMODE)
+  {
+    timer1_write(randomTimerInterval());
+  }
 }
 
 
@@ -542,8 +560,8 @@ void setup() {
   Wire.begin(SDA_PIN, SCL_PIN);  //Initialize I2C for VL6180x (TOF Sensor)
   pinMode(BATMEAS, INPUT);       //measure Battery Pin
 
-  timer1_attachInterrupt(onTimerInt); // Add ISR Function
-	timer1_enable(TIM_DIV256 , TIM_EDGE, TIM_SINGLE);
+  timer1_attachInterrupt(onTimerInt);  // Add ISR Function
+  timer1_enable(TIM_DIV256, TIM_EDGE, TIM_SINGLE);
 
   Serial.println("pixels");
   pixels.begin();  // INITIALIZE NeoPixel strip object (REQUIRED)
@@ -661,8 +679,7 @@ void trainingSimpleMain(void) {
 
   } else {
 
-      endOfTrainingLight();
-
+    endOfTrainingLight();
   }
 }
 
@@ -730,7 +747,7 @@ void trainingAllOnAllOffMain(void) {
     }
 
   } else {
-      endOfTrainingLight();
+    endOfTrainingLight();
   }
 }
 
@@ -785,7 +802,7 @@ void trainingReturnToMasterMain(void) {
     }
 
   } else {
-      endOfTrainingLight();
+    endOfTrainingLight();
   }
 }
 
@@ -846,7 +863,7 @@ void trainingTimerModeMain(void) {
       if (timerIntreruptFlag) {
         selectColor = generateRandomColor();
         Serial.println("Intrerupt received");
-        timerIntreruptFlag=false;
+        timerIntreruptFlag = false;
         intrerruptTOF = false;
         selectECU_number(randomECUSelection);
         //delay(RGBCLEARDELAY);  //why did i used this ???
@@ -889,7 +906,6 @@ void trainingTimerModeMain(void) {
 
   } else {
 
-      endOfTrainingLight();
-
+    endOfTrainingLight();
   }
 }

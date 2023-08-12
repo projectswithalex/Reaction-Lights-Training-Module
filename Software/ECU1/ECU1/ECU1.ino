@@ -91,7 +91,7 @@ enum TRAINING_TIMERMODE_en {
   TRAINING_TIMERMODE_NrOfColorSelection,
   TRAINING_TIMERMODE_counterSetSelection,
   TRAINING_TIMERMODE_maxTimeInterval,
-  TRAINING_TIMERMODE_minTimerInterval
+  TRAINING_TIMERMODE_minTimeInterval
 };
 TRAINING_TIMERMODE_en TRAINING_TIMERMODE_selection;
 void trainingTimerModeMain(void);
@@ -129,10 +129,10 @@ bool training_partnerMode_P2ColorFlag = false;
 uint8_t training_partnerMode_P2Color = 0;
 
 bool training_timerMode_minIntervalTimeFlag = false;
-uint32_t training_timerMode_minIntervalTime = 0;
+uint8_t training_timerMode_minIntervalTime = 0;
 
 bool training_timerMode_maxIntervalTimeFlag = false;
-uint32_t training_timerMode_maxIntervalTime = 0;
+uint8_t training_timerMode_maxIntervalTime = 0;
 
 bool traininig_partnerMode_stopTimeIntervalFlag = false;
 uint8_t traininig_partnerMode_stopTimeInterval = 0;
@@ -200,16 +200,6 @@ bool TRAINING_selectColor_P2(void);
 bool TRAINING_CounterModeSetReps(void);
 bool TRAINING_setMaxIntervalTime(void);
 bool TRAINING_setMinIntervalTime(void);
-
-
-
-uint32_t TRAINING_setIntervalTimeHelper(void) {
-  if (interruptModeSelection > 2) {
-    return interruptModeSelection * 156250;  // 0.5s and 1sec
-  } else {
-    return (interruptModeSelection - 1) * 312500;  // 2s, 3s, 4s, 5s
-  }
-}
 
 uint16_t TRAINING_stopTimeDurationFunctionHelper(void) {
   return interruptModeSelection * 200;
@@ -609,7 +599,7 @@ void dataReceived(uint8_t *senderMac, uint8_t *data, uint8_t dataLength) {
   switch (dataLength) {
     case 2:
       memcpy(&packetAlone, data, sizeof(packetAlone));
-      if(packetSettings.training_trainingType==TRAINING_TIMERMODE)
+      if(packetSettings.training_trainingType==TRAINING_TIMERMODE && packetAlone.LED_Token==MY_ECU)
       {
         timer1_write(randomTimerInterval());
       }
@@ -649,15 +639,30 @@ void dataReceived(uint8_t *senderMac, uint8_t *data, uint8_t dataLength) {
 
 uint8_t randomECUSelection = 0;
 
+uint32_t randomTimerIntervalHelper(uint8_t value) {
+  uint32_t retVal=(uint32_t)value;
+  if (retVal > 2) {
+    retVal= retVal * 156250;  // 0.5s and 1sec
+    return retVal;
+  } else {
+    retVal= ((retVal - 1) * 312500);  // 2s, 3s, 4s, 5s
+    return retVal;
+  }
+}
+
 uint32_t randomTimerInterval(void) {
   randomSeed(millis());
   uint8_t randomNumber = 0;
-  if (training_timerMode_minIntervalTimeFlag != training_timerMode_maxIntervalTimeFlag) {
-    randomNumber = random(training_timerMode_minIntervalTimeFlag, training_timerMode_maxIntervalTimeFlag);
+  uint32_t retVal=0;
+  if (training_timerMode_minIntervalTime != training_timerMode_maxIntervalTime) {
+    randomNumber = random(training_timerMode_minIntervalTime, training_timerMode_maxIntervalTime);
   } else {
-    randomNumber=training_timerMode_minIntervalTimeFlag;
+    randomNumber=training_timerMode_minIntervalTime;
   }
-  return randomNumber;
+  retVal=randomTimerIntervalHelper(randomNumber);
+  Serial.print("Timer 1 randomNumber :");
+  Serial.println(retVal);
+  return retVal;
 }
 
 uint8_t randomECUselect(void) {
@@ -762,6 +767,10 @@ void restartTrainingModeSingle(void) {
     packetAlone.LED_Token = MY_ECU;
     counterExercise = 0;
     resTOFflag = 0;
+  }
+  if(training_trainingType==TRAINING_TIMERMODE)
+  {
+    timer1_write(randomTimerInterval());
   }
 }
 
@@ -946,26 +955,32 @@ void startOptionSelection(void) {
 
       case TRAINING_TIMERMODE:
         switch (TRAINING_TIMERMODE_selection) {
-          case TRAINING_TIMERMODE_SelectColor_Player1:
-            if (TRAINING_selectColor_P1()) {
-              TRAINING_TIMERMODE_selection = TRAINING_TIMERMODE_SelectColor_Player2;
+          case TRAINING_TIMERMODE_SelectNrOfECUs:
+            if (TRAINING_SelectNrOfECUsFunction()) {
+              TRAINING_TIMERMODE_selection = TRAINING_TIMERMODE_NrOfColorSelection;
             }
             break;
 
-          case TRAINING_TIMERMODE_SelectColor_Player2:
-            if (TRAINING_selectColor_P2()) {
+          case TRAINING_TIMERMODE_NrOfColorSelection:
+            if (TRAINING_nrOfColorsFunction()) {
               TRAINING_TIMERMODE_selection = TRAINING_TIMERMODE_counterSetSelection;
             }
             break;
 
           case TRAINING_TIMERMODE_counterSetSelection:
             if (TRAINING_counterSetSelectionFunction()) {
-              training_startTraining_Flag = TRAINING_TIMERMODE_stopTimeDuration;
+              TRAINING_TIMERMODE_selection = TRAINING_TIMERMODE_maxTimeInterval;
             }
             break;
 
-          case TRAINING_TIMERMODE_stopTimeDuration:
-            if (TRAINING_stopTimeDurationFunction()) {
+          case TRAINING_TIMERMODE_maxTimeInterval:
+            if (TRAINING_setMaxIntervalTime()) {
+               TRAINING_TIMERMODE_selection = TRAINING_TIMERMODE_minTimeInterval;
+            }
+            break;
+
+            case TRAINING_TIMERMODE_minTimeInterval:
+            if (TRAINING_setMinIntervalTime()) {
               training_startTraining_Flag = true;
             }
             break;
@@ -1007,12 +1022,12 @@ void sendSettingsData(void) {
     training_allSettingsSent = true;
     intrerruptTOF = false;
     TOFsensor.VL6180xClearInterrupt();
-    //showBatteryPercentage();
-    delay(500);
-
+    showBatteryPercentage();
+    delay(1000);
     intrerruptTOF = false;
     TOFsensor.VL6180xClearInterrupt();
 
+    timer1_write(randomTimerInterval());
     TransmisionStatus = ONLYRECEIVE_en;
   }
 }
@@ -1097,7 +1112,6 @@ void loop() {
     }
   }
 }
-
 
 void trainingSimpleMain(void) {
   if (counterExercise < training_counterValStop) {
@@ -1286,7 +1300,6 @@ void trainingReturnToMasterMain(void) {
   }
 }
 
-
 void trainingPartnerModeMain(void) {
 
   if (dataP1received == 1 || dataP2received == 1) {
@@ -1329,6 +1342,7 @@ void trainingPartnerModeMain(void) {
     clearRGBcolors();
   }
 }
+
 void trainingTimerModeMain(void) {
   if (counterExercise < packetSettings.training_counterValStop) {
     if (millis() - timeFlag > 500) {
@@ -1389,7 +1403,6 @@ void trainingTimerModeMain(void) {
 
   }
 }
-
 
 void trainingCounterModeMain(void) {
 
@@ -1665,37 +1678,6 @@ bool TRAINING_nrOfColorsFunction(void) {
   return lreturn;
 }
 
-bool TRAINING_nrOfColorsFunction(void) {
-  bool lreturn = false;
-  uint8_t setColor;
-  if (training_nrOfColorsFlag == false) {
-    buttonPushValid();
-    setColor = interruptModeSelection;
-    if (setColor != 0) {
-      intrerruptTOF = false;
-      TOFsensor.VL6180xClearInterrupt();
-    }
-    if (setColor > 6) {
-      setColor = 0;
-      interruptModeSelection = 0;
-      clearRGBcolors();
-    }
-    setRGBColorsNumber(setColor, 1);  //green
-    if (intrerruptTOF == true && setColor != 0) {
-      training_nrOfColors = setColor;
-      training_nrOfColorsFlag = true;
-      interruptModeSelection = 0;
-      intrerruptTOF = false;
-      TOFsensor.VL6180xClearInterrupt();
-      Serial.print("training_nrOfColors:");
-      Serial.println(training_nrOfColors);
-      clearRGBcolors();
-      lreturn = true;
-    }
-  }
-  return lreturn;
-}
-
 bool TRAINING_stopTimeDurationFunction(void) {
   bool lreturn = false;
   uint16_t stopDuration = 0;
@@ -1729,10 +1711,10 @@ bool TRAINING_stopTimeDurationFunction(void) {
 
 bool TRAINING_setMaxIntervalTime(void) {
   bool lreturn = false;
-  uint16_t maxTime = 0;
+  uint8_t maxTime = 0;
   if (training_timerMode_maxIntervalTimeFlag == false) {
     buttonPushValid();
-    maxTime = TRAINING_setIntervalTimeHelper();
+    maxTime = interruptModeSelection;
     if (maxTime != 0) {
       intrerruptTOF = false;
       TOFsensor.VL6180xClearInterrupt();
@@ -1760,15 +1742,15 @@ bool TRAINING_setMaxIntervalTime(void) {
 
 bool TRAINING_setMinIntervalTime(void) {
   bool lreturn = false;
-  uint16_t minTime = 0;
-  if (training_stopTimeDurationFlag == false) {
+  uint8_t minTime = 0;
+  if (training_timerMode_minIntervalTimeFlag == false) {
     buttonPushValid();
-    minTime = TRAINING_setIntervalTimeHelper();
+    minTime = interruptModeSelection;
     if (minTime != 0) {
       intrerruptTOF = false;
       TOFsensor.VL6180xClearInterrupt();
     }
-    if (interruptModeSelection > 6) {
+    if ((interruptModeSelection > 6) || (minTime > training_timerMode_maxIntervalTime) ){
       minTime = 0;
       interruptModeSelection = 0;
       clearRGBcolors();
