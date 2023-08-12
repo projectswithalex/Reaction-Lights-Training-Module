@@ -134,6 +134,9 @@ uint8_t training_timerMode_minIntervalTime = 0;
 bool training_timerMode_maxIntervalTimeFlag = false;
 uint8_t training_timerMode_maxIntervalTime = 0;
 
+bool training_changeDistanceFlag = false;
+uint8_t training_changeDistance = 0;
+
 bool traininig_partnerMode_stopTimeIntervalFlag = false;
 uint8_t traininig_partnerMode_stopTimeInterval = 0;
 
@@ -200,6 +203,7 @@ bool TRAINING_selectColor_P2(void);
 bool TRAINING_CounterModeSetReps(void);
 bool TRAINING_setMaxIntervalTime(void);
 bool TRAINING_setMinIntervalTime(void);
+bool TRAINING_changeDistanceFunction(void);
 
 uint16_t TRAINING_stopTimeDurationFunctionHelper(void) {
   return interruptModeSelection * 200;
@@ -207,6 +211,10 @@ uint16_t TRAINING_stopTimeDurationFunctionHelper(void) {
 
 uint8_t TRAINING_counterSetSelectionFunctionHelper(void) {
   return interruptModeSelection * 5;
+}
+
+uint8_t TRAINING_changeDistanceFunctionHelper(void) {
+  return interruptModeSelection * 20;
 }
 
 
@@ -599,8 +607,7 @@ void dataReceived(uint8_t *senderMac, uint8_t *data, uint8_t dataLength) {
   switch (dataLength) {
     case 2:
       memcpy(&packetAlone, data, sizeof(packetAlone));
-      if(packetSettings.training_trainingType==TRAINING_TIMERMODE && packetAlone.LED_Token==MY_ECU)
-      {
+      if (packetSettings.training_trainingType == TRAINING_TIMERMODE && packetAlone.LED_Token == MY_ECU) {
         timer1_write(randomTimerInterval());
       }
       break;
@@ -640,12 +647,12 @@ void dataReceived(uint8_t *senderMac, uint8_t *data, uint8_t dataLength) {
 uint8_t randomECUSelection = 0;
 
 uint32_t randomTimerIntervalHelper(uint8_t value) {
-  uint32_t retVal=(uint32_t)value;
+  uint32_t retVal = (uint32_t)value;
   if (retVal > 2) {
-    retVal= retVal * 156250;  // 0.5s and 1sec
+    retVal = retVal * 156250;  // 0.5s and 1sec
     return retVal;
   } else {
-    retVal= ((retVal - 1) * 312500);  // 2s, 3s, 4s, 5s
+    retVal = ((retVal - 1) * 312500);  // 2s, 3s, 4s, 5s
     return retVal;
   }
 }
@@ -653,13 +660,13 @@ uint32_t randomTimerIntervalHelper(uint8_t value) {
 uint32_t randomTimerInterval(void) {
   randomSeed(millis());
   uint8_t randomNumber = 0;
-  uint32_t retVal=0;
+  uint32_t retVal = 0;
   if (training_timerMode_minIntervalTime != training_timerMode_maxIntervalTime) {
     randomNumber = random(training_timerMode_minIntervalTime, training_timerMode_maxIntervalTime);
   } else {
-    randomNumber=training_timerMode_minIntervalTime;
+    randomNumber = training_timerMode_minIntervalTime;
   }
-  retVal=randomTimerIntervalHelper(randomNumber);
+  retVal = randomTimerIntervalHelper(randomNumber);
   Serial.print("Timer 1 randomNumber :");
   Serial.println(retVal);
   return retVal;
@@ -768,8 +775,7 @@ void restartTrainingModeSingle(void) {
     counterExercise = 0;
     resTOFflag = 0;
   }
-  if(training_trainingType==TRAINING_TIMERMODE)
-  {
+  if (training_trainingType == TRAINING_TIMERMODE) {
     timer1_write(randomTimerInterval());
   }
 }
@@ -975,11 +981,11 @@ void startOptionSelection(void) {
 
           case TRAINING_TIMERMODE_maxTimeInterval:
             if (TRAINING_setMaxIntervalTime()) {
-               TRAINING_TIMERMODE_selection = TRAINING_TIMERMODE_minTimeInterval;
+              TRAINING_TIMERMODE_selection = TRAINING_TIMERMODE_minTimeInterval;
             }
             break;
 
-            case TRAINING_TIMERMODE_minTimeInterval:
+          case TRAINING_TIMERMODE_minTimeInterval:
             if (TRAINING_setMinIntervalTime()) {
               training_startTraining_Flag = true;
             }
@@ -1039,8 +1045,8 @@ void setup() {
                             // Wire.begin(SDA_PIN, SCL_PIN);  //Initialize I2C for VL6180x (TOF Sensor)
   pinMode(BATMEAS, INPUT);  //measure Battery Pin
 
-  timer1_attachInterrupt(onTimerInt); // Add ISR Function
-	timer1_enable(TIM_DIV256 , TIM_EDGE, TIM_SINGLE);
+  timer1_attachInterrupt(onTimerInt);  // Add ISR Function
+  timer1_enable(TIM_DIV256, TIM_EDGE, TIM_SINGLE);
 
   pinMode(SELBUTTON, INPUT);
   attachInterrupt(digitalPinToInterrupt(SELBUTTON), handleInterruptSEL, FALLING);
@@ -1356,7 +1362,7 @@ void trainingTimerModeMain(void) {
       if (timerIntreruptFlag) {
         selectColor = generateRandomColor();
         Serial.println("Intrerupt received");
-        timerIntreruptFlag=false;
+        timerIntreruptFlag = false;
         intrerruptTOF = false;
         selectECU_number(randomECUSelection);
         //delay(RGBCLEARDELAY);  //why did i used this ???
@@ -1399,8 +1405,7 @@ void trainingTimerModeMain(void) {
 
   } else {
 
-      endOfTrainingLight();
-
+    endOfTrainingLight();
   }
 }
 
@@ -1750,7 +1755,7 @@ bool TRAINING_setMinIntervalTime(void) {
       intrerruptTOF = false;
       TOFsensor.VL6180xClearInterrupt();
     }
-    if ((interruptModeSelection > 6) || (minTime > training_timerMode_maxIntervalTime) ){
+    if ((interruptModeSelection > 6) || (minTime > training_timerMode_maxIntervalTime)) {
       minTime = 0;
       interruptModeSelection = 0;
       clearRGBcolors();
@@ -1836,6 +1841,40 @@ bool TRAINING_selectColor_P2(void) {
   }
   return lreturn;
 }
+
+bool TRAINING_changeDistanceFunction(void) {
+  bool lreturn = false;
+  uint8_t distance;
+  if (training_changeDistanceFlag == false) {
+    buttonPushValid();
+    distance = TRAINING_changeDistanceFunctionHelper();
+    if (distance != 0) {
+      intrerruptTOF = false;
+      TOFsensor.VL6180xClearInterrupt();
+    }
+    if (interruptModeSelection > 6) {
+      distance = 0;
+      interruptModeSelection = 0;
+      clearRGBcolors();
+    }
+
+    setRGBColorsNumber(interruptModeSelection, 3);  //yellow
+    if (intrerruptTOF == true && distance != 0) {
+      training_changeDistance = distance;
+      training_changeDistanceFlag = true;
+      interruptModeSelection = 0;
+      intrerruptTOF = false;
+      TOFsensor.VL6180xClearInterrupt();
+      delay(50); 
+      TOFsensor.VL6180xSetDistInt(training_changeDistance, training_changeDistance);
+      delay(50); 
+      clearRGBcolors();
+      lreturn = true;
+    }
+  }
+  return lreturn;
+}
+
 
 void setupTrainingCounterMode(void) {
   sensor.init();
