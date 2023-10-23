@@ -1875,7 +1875,6 @@ bool TRAINING_changeDistanceFunction(void) {
   return lreturn;
 }
 
-
 void setupTrainingCounterMode(void) {
   sensor.init();
   sensor.configureDefault();

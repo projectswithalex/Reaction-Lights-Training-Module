@@ -53,7 +53,7 @@ void loop() {
     for (int i = 0; i < LEDNR; i++) {
       pixels.setPixelColor(i, pixels.Color(50, 0, 0));
       pixels.show();
-      delay(50);
+      delay(100);
     }
     Serial.println("Light Set");
     interruptReceived = false;
@@ -61,9 +61,7 @@ void loop() {
     Serial.println("Intrerupt cleared");
   }
 
-  for (int i = 16; i >= 0; i--) {
-      pixels.setPixelColor(i, pixels.Color(0, 0, 0));
-      pixels.show();
-    }
+  pixels.clear();
+  pixels.show();
     
 }
