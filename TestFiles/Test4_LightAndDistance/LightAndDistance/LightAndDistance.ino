@@ -1,6 +1,11 @@
+#include <VL6180X_WE.h>
+
 #include <Adafruit_NeoPixel.h>
 #include <Wire.h>
-#include <VL6180X.h>
+/* #include <VL6180X.h> */
+
+
+
 #define VL6180X_ADDRESS 0x29
 #define LED 2
 #define LEDNR 16
@@ -8,7 +13,8 @@
 #define SCL_PIN 5
 #define SDA_PIN 4
 
-VL6180X sensor;
+/* VL6180X sensor; */
+VL6180x sensor(VL6180X_ADDRESS);
 
 Adafruit_NeoPixel pixels(LEDNR, LED, NEO_GRB + NEO_KHZ800);
 
@@ -21,10 +27,20 @@ void setup() {
   pixels.clear();
   pixels.show();
 
-  sensor.init();
+  /* sensor.init();
   sensor.configureDefault();
   sensor.setScaling(0); //different Scalling values
-  sensor.setTimeout(500);
+  sensor.setTimeout(500); */
+
+     if(sensor.VL6180xInit() != 0){
+    Serial.println("FAILED TO INITALIZE"); //Initialize device and check for errors
+  }; 
+
+  sensor.VL6180xDefaultSettings(); //Load default settings to get started.
+  
+    delay(100); // delay 0.1 s
+
+ 
 }
 
 
@@ -33,9 +49,11 @@ void loop() {
   uint16_t distanceVal = 0;
   uint8_t mapValue=0;
 
-  distanceVal = sensor.readRangeSingleMillimeters();
+  /* distanceVal = sensor.readRangeSingleMillimeters();
 
-   if (sensor.timeoutOccurred()) { Serial.print(" TIMEOUT"); }
+   if (sensor.timeoutOccurred()) { Serial.print(" TIMEOUT"); } */
+
+   distanceVal = sensor.getDistance();
 
   mapValue = map(distanceVal, 10, 200, 0, 16);
 

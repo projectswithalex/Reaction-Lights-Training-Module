@@ -22,7 +22,7 @@ Disclaimer : Code is opensource and can be modified by everyone. If you can impr
 #include <espnow.h>
 #include <Wire.h>
 #include <VL6180X_WE.h>
-#include <VL6180X.h>
+#include <Adafruit_VL6180X.h>
 
 
 /******************************** TRAINING MODE SELECTION ******************************/
@@ -103,7 +103,7 @@ enum TRAINING_COUNTERMODE_en {
 TRAINING_COUNTERMODE_en TRAINING_COUNTERMODE_selection;
 void trainingCounterModeMain(void);
 void setupTrainingCounterMode(void);
-VL6180X sensor;
+/* VL6180X sensor; */
 uint8_t TRAINING_COUNTERMODE_pushUpCounter = 0;
 bool TRAINING_COUNTERMODE_flagUp = false;
 bool TRAINING_COUNTERMODE_flagDown = false;
@@ -229,20 +229,20 @@ uint8_t counterExercise = 0;
 #define MACADDRESSSIZE 6                       //Mac address size
 #define NO_ECU 0                               //No ecu with the define MY_ECU 0
 #define RGBCLEARDELAY 100                      //delay to be used with RGB clear ?TBD
-  /*replaceValueHere*/ #define AVAILABLEECU 4  //Nr of ECUs to be used
+  /*replaceValueHere*/ #define AVAILABLEECU 3  //Nr of ECUs to be used
 #define MAXAVAILABLEECU 10                     // I think ESPNOW supports up to 10 devices
 
   //Receivers ECUS addreses.Add all of them here.
 
-  // /*replaceValueHere*/ uint8_t receiverAddress1[] = { 0xF4, 0xCF, 0xA2, 0x5D, 0x75, 0x28 };    //  this ECU MAC address ,only for example purposes
-  /*replaceValueHere*/ uint8_t receiverAddress2[] = { 0xAC, 0x0B, 0xFB, 0xCF, 0xC1, 0x0F };  //  ECU 2
-/*replaceValueHere*/ uint8_t receiverAddress3[] = { 0xAC, 0x0B, 0xFB, 0xCF, 0xD8, 0xB1 };    //  ECU 3
-/*replaceValueHere*/ uint8_t receiverAddress4[] = { 0xF4, 0xCF, 0xA2, 0x79, 0x23, 0x84 };    //  ECU 4
-// /*replaceValueHere*/ uint8_t receiverAddress4[] = { 0x4C, 0xEB, 0xD6, 0x62, 0x09, 0x54 };    //  ECU 5
+  // /*replaceValueHere*/ uint8_t receiverAddress1[] = { 0x40, 0xF5, 0x20, 0x33, 0xDA, 0xF9 };    //  this ECU MAC address ,only for example purposes
+  /*replaceValueHere*/ uint8_t receiverAddress2[] = { 0xEC, 0xFA, 0xBC, 0x01, 0xA0, 0xA8 };  //  ECU 2
+/*replaceValueHere*/ uint8_t receiverAddress3[] = { 0x3C, 0x61, 0x05, 0xED, 0x2A, 0xB6 };    //  ECU 3
+/*replaceValueHere*/ uint8_t receiverAddress4[] = { 0x2C, 0xF4, 0x32, 0x65, 0x97, 0xD4 };    //  ECU 4
+// /*replaceValueHere*/ uint8_t receiverAddress5[] = { 0x2C, 0xF4, 0x32, 0x65, 0x8C, 0xCC };    //  ECU 5
 
 uint8_t receiverECU_Address[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };  //Placeholder for the receiver address
 
-uint8_t receiverArray[MAXAVAILABLEECU][MACADDRESSSIZE];
+uint8_t receiverArray[MAXAVAILABLEECU][MACADDRESSSIZE]; 
 
 struct __attribute__((packed)) dataPacketAlone {
   uint8_t LED_Token;  // Token for activating ECUs
@@ -436,7 +436,8 @@ float mapfloat(float x, float in_min, float in_max, float out_min, float out_max
 
 void readBatValue(void) {
   analogVal = analogRead(BATMEAS);
-  /*replaceValueHere*/ float voltage = (((analogVal * 3.3) / 1024) * 1.54);  //1.54 is the constant for me , check out with the multimeter and set the right value for you (trial&error) until correct
+  Serial.println(analogVal);
+  /*replaceValueHere*/ float voltage = (((analogVal * 3.3) / 1024) * 2.76);  //1.54 is the constant for me , check out with the multimeter and set the right value for you (trial&error) until correct
   bat_percentage = mapfloat(voltage, 3, 4.2, 0, 100);                        //Real Value
 
   if (bat_percentage >= 100) {
@@ -523,6 +524,7 @@ void initBatteryCheck(void) {
 
 VL6180xIdentification identification;
 VL6180x TOFsensor(VL6180X_ADDRESS);
+Adafruit_VL6180X v1 = Adafruit_VL6180X();
 
 volatile bool intrerruptTOF = false;
 volatile int resTOFflag = 0;
@@ -540,19 +542,21 @@ void initTOFSensor(void) {
   pinMode(TOF_INT, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(TOF_INT), handleInterruptTOF, FALLING);
 
-  delay(100);  //do i really need this here
-  while (TOFsensor.VL6180xInit() == VL6180x_FAILURE_RESET) {
-    Serial.println("FAILED TO INITALIZE");  //Initialize device and check for errors
-    ESP.restart();
+  delay(1000);  //do i really need this here
+  if (! v1.begin()) {
+    Serial.println("Failed to find sensor");
+    while (1);
   }
-  delay(500);
-  TOFsensor.VL6180xDefautSettings();                         //Load default settings to get started.
+  Serial.println("Sensor found!");
+
   delay(500);                                                //do i really need this here
-  /*replaceValueHere*/ TOFsensor.VL6180xSetDistInt(20, 20);  //it detects a movement when it lower than 2cm. With the current initialization should work for values up until 20cm .
+  /*replaceValueHere*/ TOFsensor.VL6180xSetDistInt(50, 255);  //it detects a movement when it lower than 2cm. With the current initialization should work for values up until 20cm .
+  delay(500);
   TOFsensor.getDistanceContinously();
+  delay(500);
   TOFsensor.VL6180xClearInterrupt();
   intrerruptTOF = false;
-  //delay(500);  //do i really need this here
+  delay(500);  //do i really need this here
 }
 /******************************** TOF SENSOR CODE  ******************************/
 
@@ -804,7 +808,8 @@ void endOfTrainingCounter(void) {
   pixels.clear();
   pixels.show();
   delay(500);
-  distanceVal = sensor.readRangeSingleMillimeters();
+  /* distanceVal = TOFsensor.getDistance(); if this is called it will stop getdistancecontinuously. Removing for now */
+  Serial.println("Distance #2 called!");
   if (distanceVal < 100) {
     TRAINING_COUNTERMODE_restartCounterTraining++;
   }
@@ -1042,7 +1047,11 @@ void sendSettingsData(void) {
 
 void setup() {
   Serial.begin(115200);     // initialize serial port
-                            // Wire.begin(SDA_PIN, SCL_PIN);  //Initialize I2C for VL6180x (TOF Sensor)
+  Wire.begin(SDA_PIN, SCL_PIN);  //Initialize I2C for VL6180x (TOF Sensor)
+ 
+  Serial.println("initTOFSensor");
+  initTOFSensor();
+ 
   pinMode(BATMEAS, INPUT);  //measure Battery Pin
 
   timer1_attachInterrupt(onTimerInt);  // Add ISR Function
@@ -1057,9 +1066,6 @@ void setup() {
   pixels.show();
   Serial.println("initESPNOWcomm");
   initESPNOWcomm();
-
-  Serial.println("initTOFSensor");
-  initTOFSensor();
   Serial.println("initBatteryCheck");
   initBatteryCheck();
   Serial.println("almost Ready");
@@ -1413,9 +1419,10 @@ void trainingCounterModeMain(void) {
 
   uint16_t distanceVal;
   if (TRAINING_COUNTERMODE_pushUpCounter < training_counterMode_setReps) {
-    distanceVal = sensor.readRangeSingleMillimeters();
+    /* distanceVal = TOFsensor.getDistance(); if this is called it will stop getdistanccontinously, removing for now */
+    Serial.println("distance #1 called!");
 
-    if (sensor.timeoutOccurred()) { Serial.print(" TIMEOUT"); }
+    /* if (TOFsensor.timeoutOccurred()) { Serial.print(" TIMEOUT"); } */
 
     delay(100);
 
@@ -1876,10 +1883,9 @@ bool TRAINING_changeDistanceFunction(void) {
 }
 
 void setupTrainingCounterMode(void) {
-  sensor.init();
-  sensor.configureDefault();
-  sensor.setScaling(2);
-  sensor.setTimeout(500);
+  TOFsensor.VL6180xInit();
+  TOFsensor.VL6180xDefaultSettings();
+
 }
 
 bool TRAINING_CounterModeSetReps(void) {

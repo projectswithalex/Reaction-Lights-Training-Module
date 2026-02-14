@@ -22,7 +22,6 @@ Disclaimer : Code is opensource and can be modified by everyone. If you can impr
 #include <espnow.h>
 #include <Wire.h>
 #include <VL6180X_WE.h>
-#include <VL6180X.h>
 
 
 /******************************** TRAINING MODE SELECTION ******************************/
@@ -70,16 +69,16 @@ ICACHE_RAM_ATTR void onTimerInt() {
 #define MACADDRESSSIZE 6                       //Mac address size
 #define NO_ECU 0                               //No ecu with the define MY_ECU 0
 #define RGBCLEARDELAY 100                      //delay to be used with RGB clear ?TBD
-  /*replaceValueHere*/ #define AVAILABLEECU 4  //Nr of ECUs to be used
+  /*replaceValueHere*/ #define AVAILABLEECU 3  //Nr of ECUs to be used
 #define MAXAVAILABLEECU 10                     // I think ESPNOW supports up to 10 devices
 
   //Receivers ECUS addreses.Add all of them here.
 
-  /*replaceValueHere*/ uint8_t receiverAddress1[] = { 0xF4, 0xCF, 0xA2, 0x5D, 0x75, 0x28 };  //  this ECU MAC address ,only for example purposes
-                                                                                             // /*replaceValueHere*/ uint8_t receiverAddress2[] = { 0xAC, 0x0B, 0xFB, 0xCF, 0xC1, 0x0F };  //  ECU 2
-/*replaceValueHere*/ uint8_t receiverAddress3[] = { 0xAC, 0x0B, 0xFB, 0xCF, 0xD8, 0xB1 };    //  ECU 3
-/*replaceValueHere*/ uint8_t receiverAddress4[] = { 0xF4, 0xCF, 0xA2, 0x79, 0x23, 0x84 };    //  ECU 4
-// /*replaceValueHere*/ uint8_t receiverAddress5[] = { 0x4C, 0xEB, 0xD6, 0x62, 0x09, 0x54 };    //  ECU 5
+  /*replaceValueHere*/ uint8_t receiverAddress1[] = { 0x40, 0xF5, 0x20, 0x33, 0xDA, 0xF9 };  //  this ECU MAC address ,only for example purposes
+                                                                                             // /*replaceValueHere*/ uint8_t receiverAddress2[] = { 0xEC, 0xFA, 0xBC, 0x01, 0xA0, 0xA8 };  //  ECU 2
+/*replaceValueHere*/ uint8_t receiverAddress3[] = { 0x3C, 0x61, 0x05, 0xED, 0x2A, 0xB6 };    //  ECU 3
+/*replaceValueHere*/ uint8_t receiverAddress4[] = { 0x2C, 0xF4, 0x32, 0x65, 0x97, 0xD4 };    //  ECU 4
+// /*replaceValueHere*/ uint8_t receiverAddress5[] = { 0x2C, 0xF4, 0x32, 0x65, 0x8C, 0xCC };    //  ECU 5
 
 uint8_t receiverECU_Address[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };  //Placeholder for the receiver address
 
@@ -265,7 +264,8 @@ float mapfloat(float x, float in_min, float in_max, float out_min, float out_max
 
 void readBatValue(void) {
   analogVal = analogRead(BATMEAS);
-  /*replaceValueHere*/ float voltage = (((analogVal * 3.3) / 1024) * 1.54);  //1.54 is the constant for me , check out with the multimeter and set the right value for you (trial&error) until correct
+  Serial.println(analogVal);
+  /*replaceValueHere*/ float voltage = (((analogVal * 3.3) / 1024) * 1.96);  //1.54 is the constant for me , check out with the multimeter and set the right value for you (trial&error) until correct
   bat_percentage = mapfloat(voltage, 3, 4.2, 0, 100);                        //Real Value
 
   if (bat_percentage >= 100) {
@@ -338,6 +338,8 @@ void showBatteryPercentage(void) {
 void initBatteryCheck(void) {
   readBatValue();
   showBatteryPercentage();
+  delay(1000);
+  clearRGBcolors();
 }
 /******************************** BATTERY CHECK CODE  ******************************/
 
@@ -368,17 +370,18 @@ void initTOFSensor(void) {
   attachInterrupt(digitalPinToInterrupt(TOF_INT), handleInterruptTOF, FALLING);
 
   delay(500);  //do i really need this here
-  while (TOFsensor.VL6180xInit() == VL6180x_FAILURE_RESET) {
+  if (TOFsensor.VL6180xInit() != 0) {
     Serial.println("FAILED TO INITALIZE");  //Initialize device and check for errors
   }
   delay(500);
   TOFsensor.VL6180xDefautSettings();                         //Load default settings to get started.
   delay(500);                                                //do i really need this here
-  /*replaceValueHere*/ TOFsensor.VL6180xSetDistInt(20, 20);  //it detects a movement when it lower than 2cm. With the current initialization should work for values up until 20cm .
+  /*replaceValueHere*/ TOFsensor.VL6180xSetDistInt(50, 255);  //it detects a movement when it lower than 2cm. With the current initialization should work for values up until 20cm .
+  delay(500);
   TOFsensor.getDistanceContinously();
   TOFsensor.VL6180xClearInterrupt();
   intrerruptTOF = false;
-  //delay(500);  //do i really need this here
+  delay(500);
 }
 /******************************** TOF SENSOR CODE  ******************************/
 
